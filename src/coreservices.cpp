@@ -62,6 +62,7 @@
 #include "util/translations.h"
 #include "util/versionstore.h"
 #include "vinylcontrol/vinylcontrolmanager.h"
+#include "xdjsync/xdjsyncservice.h"
 
 #ifdef __APPLE__
 #include "util/sandbox.h"
@@ -583,6 +584,10 @@ void CoreServices::initialize(QApplication* pApp) {
 
     m_pPlayerManager->addConfiguredDecks();
 
+    if (mixxx::xdjsync::XdjSyncService::isEnabled(pConfig)) {
+        m_pXdjSyncService = std::make_shared<mixxx::xdjsync::XdjSyncService>(pConfig);
+    }
+
     for (int i = 0; i < kSamplerCount; ++i) {
         m_pPlayerManager->addSampler();
     }
@@ -923,6 +928,10 @@ void CoreServices::finalize() {
     qDebug() << t.elapsed(false).debugMillisWithUnit() << "stopping pending Library tasks";
     m_pTrackCollectionManager->stopLibraryScan();
     m_pLibrary->stopPendingTasks();
+
+    // XdjSyncService reads deck controls owned by PlayerManager
+    qDebug() << t.elapsed(false).debugMillisWithUnit() << "deleting XdjSyncService";
+    CLEAR_AND_CHECK_DELETED(m_pXdjSyncService);
 
     qDebug() << t.elapsed(false).debugMillisWithUnit() << "saving configuration";
     m_pSettingsManager->save();

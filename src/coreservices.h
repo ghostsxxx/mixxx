@@ -25,6 +25,9 @@ class ControlPushButton;
 struct LibraryScanResultSummary;
 
 namespace mixxx {
+namespace xdjsync {
+class XdjSyncService;
+} // namespace xdjsync
 
 class ControlIndicatorTimer;
 class DbConnectionPool;
@@ -147,6 +150,8 @@ class CoreServices : public QObject {
     std::shared_ptr<ConfigObject<ConfigValueKbd>> m_pKbdConfigEmpty;
 
     std::shared_ptr<mixxx::ScreensaverManager> m_pScreensaverManager;
+
+    std::shared_ptr<mixxx::xdjsync::XdjSyncService> m_pXdjSyncService;
 
     std::unique_ptr<SkinControls> m_pSkinControls;
     std::unique_ptr<ControlPushButton> m_pTouchShift;

@@ -1769,6 +1769,8 @@ add_library(
   src/xdjsync/beatphase.cpp
   src/xdjsync/clockestimator.cpp
   src/xdjsync/packet.cpp
+  src/xdjsync/peertable.cpp
+  src/xdjsync/xdjsyncservice.cpp
 )
 set(MIXXX_COMMON_PRECOMPILED_HEADER src/util/assert.h)
 set(
@@ -2819,6 +2821,7 @@ if(BUILD_TESTING)
     src/test/xdjsyncbeatphasetest.cpp
     src/test/xdjsyncclocktest.cpp
     src/test/xdjsyncpackettest.cpp
+    src/test/xdjsyncpeertabletest.cpp
     src/util/moc_included_test.cpp
     src/test/helpers/log_test.cpp
   )
