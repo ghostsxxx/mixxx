@@ -1767,6 +1767,8 @@ add_library(
   src/widget/wwidgetgroup.cpp
   src/widget/wwidgetstack.cpp
   src/xdjsync/beatphase.cpp
+  src/xdjsync/clockestimator.cpp
+  src/xdjsync/packet.cpp
 )
 set(MIXXX_COMMON_PRECOMPILED_HEADER src/util/assert.h)
 set(
@@ -2815,6 +2817,8 @@ if(BUILD_TESTING)
     src/test/wpushbutton_test.cpp
     src/test/wwidgetstack_test.cpp
     src/test/xdjsyncbeatphasetest.cpp
+    src/test/xdjsyncclocktest.cpp
+    src/test/xdjsyncpackettest.cpp
     src/util/moc_included_test.cpp
     src/test/helpers/log_test.cpp
   )
