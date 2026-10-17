@@ -17,18 +17,20 @@ struct SyncAction {
 };
 
 /// Follows the reference player: tempo in BPM mode, tempo and phase in BEAT
-/// mode (D17). Phase is only corrected while both play and the clock is
-/// aligned well enough.
+/// mode, Mixxx-style (D23): one beat jump when sync engages (SYNC on, play
+/// start, a different master), afterwards only tempo
+/// corrections (also when the same master is back after a network drop).
+/// A DJ nudge on this player becomes an intentional offset that
+/// is kept. Phase is only corrected while both play and the clock is aligned
+/// well enough.
 class PhaseFollower {
   public:
-    /// Larger offsets are removed at once with a beat jump.
-    static constexpr double kSnapMs = 20.0;
-    /// Measured offset still shows the old phase right after a jump.
-    static constexpr Duration kSnapCooldown = Duration::fromMillis(500);
-    /// Smaller offsets are removed by a tempo trim with this time constant.
-    static constexpr double kSettleSeconds = 2.0;
-    /// Largest tempo trim (0.5 %).
-    static constexpr double kMaxTrim = 0.005;
+    /// Phase errors are removed by a tempo trim with this time constant.
+    static constexpr double kSettleSeconds = 1.0;
+    /// Largest tempo trim (5 %, like Mixxx's own sync).
+    static constexpr double kMaxTrim = 0.05;
+    /// Further off than this (in beats) the full trim is used ("train wreck").
+    static constexpr double kTrainWreckBeats = 0.2;
     /// Offsets below this are not corrected.
     static constexpr double kDeadbandMs = 0.5;
     /// Don't chase phase with a worse clock alignment than this.
@@ -40,15 +42,24 @@ class PhaseFollower {
             : m_alignBars(alignBars) {
     }
 
+    /// `userNudging`: the DJ is nudging this player (jog, pitch bend) now.
     SyncAction update(PlayerSyncMode ownMode,
             bool localPlaying,
             double localBpm,
             const std::optional<ReferenceStatus>& reference,
-            Duration now);
+            Duration now,
+            bool userNudging);
 
   private:
     const bool m_alignBars;
-    std::optional<Duration> m_lastSnap;
+    bool m_engagePending = true;
+    bool m_wasBeatMode = false;
+    bool m_wasPlaying = false;
+    /// Last master seen, kept across network drops.
+    std::optional<QString> m_lastReferenceId;
+    bool m_wasNudging = false;
+    /// Kept offset from a DJ nudge, in beats.
+    double m_userOffsetBeats = 0.0;
 };
 
 } // namespace mixxx::xdjsync

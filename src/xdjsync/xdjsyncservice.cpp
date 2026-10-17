@@ -30,6 +30,8 @@ constexpr quint16 kDefaultPort = 51760;
 constexpr int kStateIntervalMs = 20;  // 50 Hz
 constexpr int kPingIntervalMs = 250;  // see ClockEstimator
 constexpr int kLogIntervalTicks = 50; // once per second
+/// A nudge counts as ongoing this long after its last tick.
+constexpr Duration kNudgeHold = Duration::fromMillis(300);
 
 const QString kGroup = QString::fromLatin1(XdjSyncService::kConfigGroup);
 const QString kDeckGroup = QStringLiteral("[Channel1]");
@@ -67,6 +69,10 @@ class XdjSyncWorker : public QObject {
               m_beatJump(ConfigKey(kDeckGroup, QStringLiteral("beatjump"))),
               m_playPosition(ConfigKey(kDeckGroup, QStringLiteral("playposition"))),
               m_trackSamples(ConfigKey(kDeckGroup, QStringLiteral("track_samples"))),
+              m_rateTempUp(ConfigKey(kDeckGroup, QStringLiteral("rate_temp_up"))),
+              m_rateTempDown(ConfigKey(kDeckGroup, QStringLiteral("rate_temp_down"))),
+              m_rateTempUpSmall(ConfigKey(kDeckGroup, QStringLiteral("rate_temp_up_small"))),
+              m_rateTempDownSmall(ConfigKey(kDeckGroup, QStringLiteral("rate_temp_down_small"))),
               m_alignBars(alignBars),
               m_follower(alignBars) {
     }
@@ -182,6 +188,19 @@ class XdjSyncWorker : public QObject {
                 laneCues};
     }
 
+    /// The DJ nudges this deck: the jog script bumps [XdjSync],nudge, or a
+    /// temporary pitch bend key/button is held.
+    bool userNudging(Duration now) {
+        const double nudge = m_pControls->pNudge->get();
+        const bool rateTemp = m_rateTempUp.toBool() || m_rateTempDown.toBool() ||
+                m_rateTempUpSmall.toBool() || m_rateTempDownSmall.toBool();
+        if (nudge != m_lastNudgeValue || rateTemp) {
+            m_lastNudgeValue = nudge;
+            m_lastNudgeAt = now;
+        }
+        return m_lastNudgeAt && now - *m_lastNudgeAt < kNudgeHold;
+    }
+
     void tick() {
         const Duration now = Time::elapsed();
         // Phase timed to the audio output (D5). Without audio (no clock
@@ -237,7 +256,12 @@ class XdjSyncWorker : public QObject {
                 master == m_playerId,
         });
         const SyncAction action =
-                m_follower.update(syncMode(), local.playing, m_bpm.get(), reference, now);
+                m_follower.update(syncMode(),
+                local.playing,
+                m_bpm.get(),
+                reference,
+                now,
+                userNudging(now));
         // Setting bpm makes Mixxx adjust the rate (on the main thread), as if
         // the BPM were typed in. Overrides the pitch fader while following.
         if (action.targetBpm) {
@@ -348,6 +372,12 @@ class XdjSyncWorker : public QObject {
     PollingControlProxy m_beatJump;
     PollingControlProxy m_playPosition;
     PollingControlProxy m_trackSamples;
+    PollingControlProxy m_rateTempUp;
+    PollingControlProxy m_rateTempDown;
+    PollingControlProxy m_rateTempUpSmall;
+    PollingControlProxy m_rateTempDownSmall;
+    double m_lastNudgeValue = 0.0;
+    std::optional<Duration> m_lastNudgeAt;
     const bool m_alignBars;
     PhaseFollower m_follower;
     QUdpSocket* m_pSocket = nullptr;
@@ -409,6 +439,8 @@ XdjSyncService::XdjSyncService(UserSettingsPointer pConfig) {
     m_controls.pRefCueCountdownValid = makeReadOnly("ref_cue_countdown_valid");
     m_controls.pRefCueCountdownBars = makeReadOnly("ref_cue_countdown_bars");
     m_controls.pRefCueCountdownBeat = makeReadOnly("ref_cue_countdown_beat");
+    // Bumped by the controller script on every jog nudge (pitch bend).
+    m_controls.pNudge = std::make_unique<ControlObject>(key("nudge"));
     m_controls.pSetDownbeat = std::make_unique<ControlPushButton>(key("set_downbeat"));
     connect(m_controls.pSetDownbeat.get(),
             &ControlObject::valueChanged,

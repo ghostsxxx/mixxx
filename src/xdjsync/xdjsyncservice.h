@@ -70,6 +70,8 @@ class XdjSyncService : public QObject {
         std::unique_ptr<ControlObject> pRefCueCountdownValid;
         std::unique_ptr<ControlObject> pRefCueCountdownBars;
         std::unique_ptr<ControlObject> pRefCueCountdownBeat;
+        /// Changed by the controller script whenever the DJ nudges (jog).
+        std::unique_ptr<ControlObject> pNudge;
         /// Push: the beat at the play position becomes beat 1 of the bar.
         std::unique_ptr<ControlObject> pSetDownbeat;
     };
