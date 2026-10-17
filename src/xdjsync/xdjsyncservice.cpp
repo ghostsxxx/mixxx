@@ -10,6 +10,7 @@
 #include "moc_xdjsyncservice.cpp"
 #include "util/logger.h"
 #include "util/time.h"
+#include "xdjsync/enginephase.h"
 #include "xdjsync/peertable.h"
 
 namespace mixxx::xdjsync {
@@ -123,14 +124,16 @@ class XdjSyncWorker : public QObject {
 
     void tick() {
         const Duration now = Time::elapsed();
-        // TODO(xdjsync): take the phase from the engine at DAC time (D5).
-        // For now the GUI-thread view of the deck, sampled now.
-        const PhaseSample local{
+        // Phase timed to the audio output (D5). Without audio (no clock
+        // reference device yet), fall back to the controls sampled now.
+        const auto enginePhaseSample = enginePhase().latest(now);
+        m_dacTimed = enginePhaseSample.has_value();
+        const PhaseSample local = enginePhaseSample.value_or(PhaseSample{
                 m_play.toBool(),
                 m_bpm.get(),
                 m_beatDistance.get(),
                 now,
-        };
+        });
         send(StatePacket{
                 m_playerId,
                 m_stateSeq++,
@@ -169,7 +172,8 @@ class XdjSyncWorker : public QObject {
                                 << reference->playerId << "offset_ms"
                                 << reference->offset->offsetMs << "bpm_delta"
                                 << reference->offset->bpmDelta << "clock_uncertainty_ms"
-                                << reference->clock->uncertainty.toDoubleMillis();
+                                << reference->clock->uncertainty.toDoubleMillis()
+                                << (m_dacTimed ? "dac_timed" : "not_dac_timed");
             } else {
                 kLogger.debug() << "peers" << m_peers.peerCount() << "ref"
                                 << (reference ? reference->playerId : QStringLiteral("-"))
@@ -192,6 +196,7 @@ class XdjSyncWorker : public QObject {
     quint32 m_stateSeq = 0;
     quint32 m_pingSeq = 0;
     int m_logTicks = 0;
+    bool m_dacTimed = false;
 };
 
 XdjSyncService::XdjSyncService(UserSettingsPointer pConfig) {
@@ -213,6 +218,9 @@ XdjSyncService::XdjSyncService(UserSettingsPointer pConfig) {
         return;
     }
 
+    m_pDeckPhaseSource = std::make_unique<EngineDeckPhaseSource>();
+    installDeckPhaseSource(m_pDeckPhaseSource.get());
+
     const QString playerId = pConfig->getValue(key("PlayerId"), QHostInfo::localHostName());
     const auto port = static_cast<quint16>(pConfig->getValue(key("Port"), static_cast<int>(kDefaultPort)));
     const QHostAddress broadcastAddress(pConfig->getValue(
@@ -227,6 +235,7 @@ XdjSyncService::XdjSyncService(UserSettingsPointer pConfig) {
 }
 
 XdjSyncService::~XdjSyncService() {
+    installDeckPhaseSource(nullptr);
     // No-op if the thread was never started.
     m_thread.quit();
     m_thread.wait();

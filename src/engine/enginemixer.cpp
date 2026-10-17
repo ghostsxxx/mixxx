@@ -28,6 +28,7 @@
 #include "util/parented_ptr.h"
 #include "util/sample.h"
 #include "util/samplebuffer.h"
+#include "xdjsync/enginephase.h"
 
 namespace {
 const QString kAppGroup = QStringLiteral("[App]");
@@ -384,6 +385,10 @@ void EngineMixer::process(const std::size_t bufferSize) {
 
     // Prepare all channels for output
     processChannels(bufferSize);
+
+    // Stereo samples: bufferSize / 2 frames.
+    mixxx::xdjsync::onEngineCallbackEnd(mixxx::Duration::fromSeconds(
+            bufferSize / 2 / m_sampleRate.toDouble()));
 
     // Compute headphone mix
     // Head phone left/right mix

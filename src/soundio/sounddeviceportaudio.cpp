@@ -19,6 +19,8 @@
 #include "util/timer.h"
 #include "util/trace.h"
 #include "waveform/visualplayposition.h"
+#include "util/time.h"
+#include "xdjsync/enginephase.h"
 
 #ifdef PA_USE_ALSA
 // for PaAlsa_EnableRealtimeScheduling
@@ -1225,6 +1227,10 @@ void SoundDevicePortAudio::updateCallbackEntryToDacTime(
 
     VisualPlayPosition::setCallbackEntryToDacSecs(callbackEntrytoDacSecs, m_clkRefTimer);
     m_lastCallbackEntrytoDacSecs = callbackEntrytoDacSecs;
+
+    // m_clkRefTimer was restarted at callback entry above.
+    mixxx::xdjsync::onAudioCallbackEntry(mixxx::Time::elapsed() - m_clkRefTimer.elapsed() +
+            mixxx::Duration::fromSeconds(callbackEntrytoDacSecs));
 
     //qDebug() << callbackEntrytoDacSecs << timeSinceLastCbSecs;
 }

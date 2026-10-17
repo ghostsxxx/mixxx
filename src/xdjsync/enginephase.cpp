@@ -1,0 +1,66 @@
+#include "xdjsync/enginephase.h"
+
+#include <atomic>
+
+namespace mixxx::xdjsync {
+
+namespace {
+
+const QString kDeckGroup = QStringLiteral("[Channel1]");
+
+std::atomic<const EngineDeckPhaseSource*> s_pSource{nullptr};
+
+} // namespace
+
+EngineDeckPhaseSource::EngineDeckPhaseSource()
+        : m_play(kDeckGroup, QStringLiteral("play")),
+          m_bpm(kDeckGroup, QStringLiteral("bpm")),
+          m_beatDistance(kDeckGroup, QStringLiteral("beat_distance")) {
+}
+
+void EngineDeckPhaseSource::publish(EnginePhaseBuffer* pBuffer, Duration bufferDuration) const {
+    pBuffer->publish(m_play.toBool(), m_bpm.get(), m_beatDistance.get(), bufferDuration);
+}
+
+void EnginePhaseBuffer::setFirstSampleAtDac(Duration atDac) {
+    m_firstSampleAtDac = atDac;
+}
+
+void EnginePhaseBuffer::publish(
+        bool playing, double bpm, double beatDistance, Duration bufferDuration) {
+    if (!m_firstSampleAtDac) {
+        return;
+    }
+    // beat_distance belongs to the play position after the rendered buffer.
+    m_latest.setValue(Slot{true,
+            PhaseSample{playing, bpm, beatDistance, *m_firstSampleAtDac + bufferDuration}});
+}
+
+std::optional<PhaseSample> EnginePhaseBuffer::latest(Duration now) const {
+    const Slot slot = m_latest.getValue();
+    if (!slot.valid || now - slot.sample.atDac > kMaxAge) {
+        return std::nullopt;
+    }
+    return slot.sample;
+}
+
+EnginePhaseBuffer& enginePhase() {
+    static EnginePhaseBuffer s_buffer;
+    return s_buffer;
+}
+
+void onAudioCallbackEntry(Duration firstSampleAtDac) {
+    enginePhase().setFirstSampleAtDac(firstSampleAtDac);
+}
+
+void onEngineCallbackEnd(Duration bufferDuration) {
+    if (const EngineDeckPhaseSource* pSource = s_pSource.load(std::memory_order_acquire)) {
+        pSource->publish(&enginePhase(), bufferDuration);
+    }
+}
+
+void installDeckPhaseSource(const EngineDeckPhaseSource* pSource) {
+    s_pSource.store(pSource, std::memory_order_release);
+}
+
+} // namespace mixxx::xdjsync

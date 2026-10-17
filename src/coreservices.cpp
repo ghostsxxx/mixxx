@@ -927,16 +927,17 @@ void CoreServices::finalize() {
     m_pTrackCollectionManager->stopLibraryScan();
     m_pLibrary->stopPendingTasks();
 
-    // XdjSyncService reads deck controls owned by PlayerManager
-    qDebug() << t.elapsed(false).debugMillisWithUnit() << "deleting XdjSyncService";
-    CLEAR_AND_CHECK_DELETED(m_pXdjSyncService);
-
     qDebug() << t.elapsed(false).debugMillisWithUnit() << "saving configuration";
     m_pSettingsManager->save();
 
     // SoundManager depend on Engine and Config
     qDebug() << t.elapsed(false).debugMillisWithUnit() << "deleting SoundManager";
     CLEAR_AND_CHECK_DELETED(m_pSoundManager);
+
+    // XdjSyncService: after SoundManager (audio thread reads its deck phase
+    // source), before PlayerManager (owns the deck controls).
+    qDebug() << t.elapsed(false).debugMillisWithUnit() << "deleting XdjSyncService";
+    CLEAR_AND_CHECK_DELETED(m_pXdjSyncService);
 
     // ControllerManager depends on Config
     qDebug() << t.elapsed(false).debugMillisWithUnit() << "deleting ControllerManager";

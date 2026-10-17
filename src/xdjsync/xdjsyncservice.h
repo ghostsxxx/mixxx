@@ -12,6 +12,7 @@ class ControlObject;
 namespace mixxx::xdjsync {
 
 class XdjSyncWorker;
+class EngineDeckPhaseSource;
 
 /// Network sync between XDJ100SX players (see XDJ100SX sync/DESIGN.md).
 ///
@@ -19,6 +20,9 @@ class XdjSyncWorker;
 /// neither the GUI nor the audio thread ever wait on the network. The
 /// controls always exist (so skins can bind to them); the network thread
 /// only runs if enabled.
+///
+/// Must be deleted only after audio processing has stopped: the audio thread
+/// reads the deck phase source it installs.
 ///
 /// Config ([XdjSync] in mixxx.cfg):
 ///   Enabled          0/1, default 0
@@ -53,6 +57,7 @@ class XdjSyncService : public QObject {
 
   private:
     Controls m_controls;
+    std::unique_ptr<EngineDeckPhaseSource> m_pDeckPhaseSource;
     QThread m_thread;
     XdjSyncWorker* m_pWorker = nullptr;
 };
