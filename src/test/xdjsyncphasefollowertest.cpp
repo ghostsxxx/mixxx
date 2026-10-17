@@ -212,6 +212,49 @@ TEST(XdjSyncPhaseFollowerTest, EngagingClearsIntentionalOffset) {
     EXPECT_NEAR(-15.0 / kMsPerBeat, *action.beatJump, 1e-12);
 }
 
+ReferenceStatus jumped(ReferenceStatus ref, int positionJumps) {
+    ref.positionJumps = positionJumps;
+    return ref;
+}
+
+TEST(XdjSyncPhaseFollowerTest, RealignsWhenMasterJumps) {
+    // Master hit a hot cue: now 2 beats (and a bit) off in the bar.
+    PhaseFollower follower = engaged();
+    const auto action = beat(&follower, jumped(referenceOffInBar(2, 0.3), 1), ms(100));
+    ASSERT_TRUE(action.beatJump.has_value());
+    EXPECT_NEAR(-(2.0 + 0.3 / kMsPerBeat), *action.beatJump, 1e-12);
+    // Once.
+    EXPECT_FALSE(beat(&follower, jumped(referenceOffInBar(2, 0.3), 1), ms(200))
+                    .beatJump.has_value());
+}
+
+TEST(XdjSyncPhaseFollowerTest, OwnBeatJumpIsKept) {
+    // The DJ beat-jumped this player: off in the bar, master unchanged.
+    PhaseFollower follower = engaged();
+    EXPECT_FALSE(beat(&follower, referenceOffInBar(1, 0.3), ms(100)).beatJump.has_value());
+    EXPECT_FALSE(beat(&follower, referenceOffInBar(1, 0.3), ms(5000)).beatJump.has_value());
+}
+
+TEST(XdjSyncPhaseFollowerTest, ReconnectFixesBarWithWholeBeats) {
+    // Same master back after a drop, a beat off in the bar and 30 ms off:
+    // jump exactly one beat, the 30 ms are caught up by tempo.
+    PhaseFollower follower = engaged();
+    beat(&follower, std::nullopt, ms(1000));
+    const auto action = beat(&follower, referenceOffInBar(-1, 30.0), ms(5000));
+    ASSERT_TRUE(action.beatJump.has_value());
+    EXPECT_DOUBLE_EQ(1.0, *action.beatJump);
+    const auto next = beat(&follower, reference(30.0), ms(5020));
+    EXPECT_FALSE(next.beatJump.has_value());
+    ASSERT_TRUE(next.targetBpm.has_value());
+    EXPECT_LT(*next.targetBpm, kRefBpm);
+}
+
+TEST(XdjSyncPhaseFollowerTest, ReconnectWithRightBarDoesNotJump) {
+    PhaseFollower follower = engaged();
+    beat(&follower, std::nullopt, ms(1000));
+    EXPECT_FALSE(beat(&follower, referenceOffInBar(0, 30.0), ms(5000)).beatJump.has_value());
+}
+
 TEST(XdjSyncPhaseFollowerTest, NoPhaseCorrectionUnlessBothPlay) {
     PhaseFollower follower;
     const auto localStopped =

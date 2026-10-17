@@ -18,7 +18,9 @@ StatePacket state(const QString& id,
         double beatDistance = 0.0,
         Duration atDac = ms(0),
         Duration playingFor = ms(0)) {
-    return StatePacket{id, 1, playing, mode, bpm, beatDistance, 0, atDac, playingFor};
+    // Counts up like a real sender (older sequence numbers are dropped).
+    static quint32 s_seq = 0;
+    return StatePacket{id, ++s_seq, playing, mode, bpm, beatDistance, 0, atDac, playingFor};
 }
 
 /// A peer that has been playing for `playingFor` at 174 BPM.
@@ -284,6 +286,73 @@ TEST(XdjSyncPeerTableTest, NoReferenceLaneWithoutBarPosition) {
     const auto ref = table.reference(localStopped(), ms(0), ms(800));
     ASSERT_TRUE(ref.has_value());
     EXPECT_FALSE(ref->lane.has_value());
+}
+
+/// A playing peer "p2" at 120 BPM (2 beats/s) at beat `beatIndex + beatDistance`.
+StatePacket atBeat(qint64 beatIndex, double beatDistance, Duration atDac, double bpm = 120.0) {
+    StatePacket peer = state(QStringLiteral("p2"),
+            true,
+            PlayerSyncMode::Free,
+            bpm,
+            beatDistance,
+            atDac,
+            ms(60000));
+    peer.beatIndex = beatIndex;
+    peer.beatIndexValid = true;
+    return peer;
+}
+
+int referenceJumps(const PeerTable& table, Duration now) {
+    const auto ref = table.reference(localStopped(), ms(0), now);
+    return ref ? ref->positionJumps : -1;
+}
+
+TEST(XdjSyncPeerTableTest, CountsMasterPositionJumps) {
+    PeerTable table(QStringLiteral("me"));
+    alignClock(&table, QStringLiteral("p2"), ms(0), ms(0));
+    table.handlePacket(atBeat(40, 0.25, ms(600)), ms(600));
+    // 100 ms later at 120 BPM = 0.2 beats on: continuous.
+    table.handlePacket(atBeat(40, 0.45, ms(700)), ms(700));
+    EXPECT_EQ(0, referenceJumps(table, ms(700)));
+    // Hot cue / beat jump: 32 beats further than expected.
+    table.handlePacket(atBeat(72, 0.65, ms(800)), ms(800));
+    EXPECT_EQ(1, referenceJumps(table, ms(800)));
+    // Continues from there.
+    table.handlePacket(atBeat(72, 0.85, ms(900)), ms(900));
+    EXPECT_EQ(1, referenceJumps(table, ms(900)));
+}
+
+TEST(XdjSyncPeerTableTest, TempoChangeIsNotAPositionJump) {
+    PeerTable table(QStringLiteral("me"));
+    alignClock(&table, QStringLiteral("p2"), ms(0), ms(0));
+    table.handlePacket(atBeat(40, 0.25, ms(600)), ms(600));
+    // Tempo moved to 126 BPM between the packets (20 ms apart).
+    table.handlePacket(atBeat(40, 0.292, ms(620), 126.0), ms(620));
+    EXPECT_EQ(0, referenceJumps(table, ms(620)));
+}
+
+TEST(XdjSyncPeerTableTest, SmallPhaseMovesAreNotPositionJumps) {
+    // A nudge on the master moves its phase a little: not a jump.
+    PeerTable table(QStringLiteral("me"));
+    alignClock(&table, QStringLiteral("p2"), ms(0), ms(0));
+    table.handlePacket(atBeat(40, 0.25, ms(600)), ms(600));
+    table.handlePacket(atBeat(40, 0.35, ms(620)), ms(620)); // expected 0.29
+    EXPECT_EQ(0, referenceJumps(table, ms(620)));
+}
+
+TEST(XdjSyncPeerTableTest, IgnoresReorderedStates) {
+    PeerTable table(QStringLiteral("me"));
+    alignClock(&table, QStringLiteral("p2"), ms(0), ms(0));
+    StatePacket newer = atBeat(40, 0.45, ms(700));
+    newer.seq = 5;
+    StatePacket older = atBeat(40, 0.25, ms(600));
+    older.seq = 4;
+    table.handlePacket(newer, ms(700));
+    table.handlePacket(older, ms(701));
+    EXPECT_EQ(0, referenceJumps(table, ms(701)));
+    const auto ref = table.reference(localStopped(), ms(0), ms(701));
+    ASSERT_TRUE(ref.has_value());
+    EXPECT_DOUBLE_EQ(40.45, ref->lane->beatPosition);
 }
 
 } // namespace

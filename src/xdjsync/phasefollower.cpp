@@ -20,16 +20,27 @@ SyncAction PhaseFollower::update(PlayerSyncMode ownMode,
     // Engaging (D23): SYNC turned on, play started, or a different master.
     // Only then may the phase jump. The same master back after a network
     // drop is caught up by tempo.
+    // A jump of the master's position (cue, beat jump, new track) counts as
+    // a master change.
     const bool beatMode = ownMode == PlayerSyncMode::Beat;
     const bool otherMaster = reference && reference->playerId != m_lastReferenceId;
-    if ((beatMode && !m_wasBeatMode) || (localPlaying && !m_wasPlaying) || otherMaster) {
+    const bool masterJumped = reference && !otherMaster &&
+            reference->positionJumps != m_lastPositionJumps;
+    if ((beatMode && !m_wasBeatMode) || (localPlaying && !m_wasPlaying) || otherMaster ||
+            masterJumped) {
         m_engagePending = true;
         m_userOffsetBeats = 0.0;
     }
+    // Same master back after a drop: only its bar position is re-checked.
+    if (reference && !otherMaster && m_referenceLost) {
+        m_barCheckPending = true;
+    }
+    m_referenceLost = !reference && m_lastReferenceId.has_value();
     m_wasBeatMode = beatMode;
     m_wasPlaying = localPlaying;
     if (reference) {
         m_lastReferenceId = reference->playerId;
+        m_lastPositionJumps = reference->positionJumps;
     }
 
     // Phase only in BEAT mode, with a measured offset, tempo on both sides,
@@ -53,14 +64,23 @@ SyncAction PhaseFollower::update(PlayerSyncMode ownMode,
         m_userOffsetBeats = offset.offsetBeats;
     }
 
+    // With bar alignment the target is the reference's beat in the bar.
+    const bool barKnown = m_alignBars && offset.barOffsetBeats.has_value();
+    const bool wrongBeatInBar = barKnown && offset.beatsOffInBar != 0;
     if (m_engagePending) {
         m_engagePending = false;
-        // With bar alignment the target is the reference's beat in the bar.
-        const bool barKnown = m_alignBars && offset.barOffsetBeats.has_value();
-        const bool wrongBeatInBar = barKnown && offset.beatsOffInBar != 0;
+        m_barCheckPending = false;
         if (wrongBeatInBar || std::abs(offset.offsetMs) >= kDeadbandMs) {
             return SyncAction{tempoOnly.targetBpm,
                     barKnown ? -*offset.barOffsetBeats : -offset.offsetBeats};
+        }
+    }
+    if (m_barCheckPending) {
+        m_barCheckPending = false;
+        if (wrongBeatInBar) {
+            // Whole beats only; the in-beat offset is caught up by tempo.
+            return SyncAction{tempoOnly.targetBpm,
+                    static_cast<double>(-offset.beatsOffInBar)};
         }
     }
 

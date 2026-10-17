@@ -30,6 +30,9 @@ struct ReferenceStatus {
     /// For the beat lanes, on the local clock; empty without clock alignment
     /// or bar position.
     std::optional<LaneState> lane{};
+    /// How often the reference's play position jumped (cue, beat jump, new
+    /// track) since it was first seen.
+    int positionJumps = 0;
 };
 
 /// Known players on the network, without any I/O. All times are on the
@@ -54,6 +57,10 @@ class PeerTable {
     /// players see each other's start times a few ms apart).
     static constexpr Duration kMasterTieWindow = Duration::fromMillis(100);
 
+    /// A peer's position differing from its projected previous position by
+    /// more than this (beats) counts as a jump (cue, beat jump, new track).
+    static constexpr double kPositionJumpBeats = 0.25;
+
     /// D18: the player (peer or this one) that has been playing longest with
     /// a known tempo; among near-simultaneous starts the lowest id. Every
     /// player computes the same answer from the shared state.
@@ -69,6 +76,9 @@ class PeerTable {
         std::optional<StatePacket> state;
         /// When the state arrived, to place playingFor on the local clock.
         Duration stateReceivedAt;
+        int positionJumps = 0;
+        /// Last state with a known bar position, to detect position jumps.
+        std::optional<StatePacket> lastPositioned;
         ClockEstimator clock;
         Duration lastSeen;
     };

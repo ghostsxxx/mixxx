@@ -18,8 +18,9 @@ struct SyncAction {
 
 /// Follows the reference player: tempo in BPM mode, tempo and phase in BEAT
 /// mode, Mixxx-style (D23): one beat jump when sync engages (SYNC on, play
-/// start, a different master), afterwards only tempo
-/// corrections (also when the same master is back after a network drop).
+/// start, a different master, the master's position jumped), afterwards
+/// only tempo corrections. The same master back after a network drop is
+/// caught up by tempo, plus a whole-beat jump if the bar is off (D25).
 /// A DJ nudge on this player becomes an intentional offset that
 /// is kept. Phase is only corrected while both play and the clock is aligned
 /// well enough.
@@ -57,6 +58,9 @@ class PhaseFollower {
     bool m_wasPlaying = false;
     /// Last master seen, kept across network drops.
     std::optional<QString> m_lastReferenceId;
+    int m_lastPositionJumps = 0;
+    bool m_referenceLost = false;
+    bool m_barCheckPending = false;
     bool m_wasNudging = false;
     /// Kept offset from a DJ nudge, in beats.
     double m_userOffsetBeats = 0.0;

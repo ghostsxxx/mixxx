@@ -2,8 +2,33 @@
 
 #include <QList>
 #include <algorithm>
+#include <cmath>
 
 namespace mixxx::xdjsync {
+
+namespace {
+
+/// `seq` came before `lastSeq`; a big step back is a restarted sender.
+bool isOlder(quint32 seq, quint32 lastSeq) {
+    constexpr quint32 kRestartGap = 100;
+    return seq <= lastSeq && lastSeq - seq < kRestartGap;
+}
+
+double positionBeats(const StatePacket& state) {
+    return static_cast<double>(state.beatIndex) + state.beatDistance;
+}
+
+/// `next` is not where `previous` would have played to: cue, beat jump or
+/// new track. Both on the sender's clock.
+bool isPositionJump(const StatePacket& previous, const StatePacket& next) {
+    const double elapsedBeats = previous.playing
+            ? (next.atDac - previous.atDac).toDoubleSeconds() * previous.bpm / 60.0
+            : 0.0;
+    const double expected = positionBeats(previous) + elapsedBeats;
+    return std::abs(positionBeats(next) - expected) > PeerTable::kPositionJumpBeats;
+}
+
+} // namespace
 
 PeerTable::PeerTable(QString ownPlayerId)
         : m_ownPlayerId(std::move(ownPlayerId)) {
@@ -13,6 +38,15 @@ std::optional<PongPacket> PeerTable::handlePacket(const Packet& packet, Duration
     if (const auto* pState = std::get_if<StatePacket>(&packet)) {
         if (pState->playerId != m_ownPlayerId) {
             Peer& peer = touch(pState->playerId, receivedAt);
+            if (peer.state && isOlder(pState->seq, peer.state->seq)) {
+                return std::nullopt; // reordered on the network
+            }
+            if (pState->beatIndexValid) {
+                if (peer.lastPositioned && isPositionJump(*peer.lastPositioned, *pState)) {
+                    ++peer.positionJumps;
+                }
+                peer.lastPositioned = *pState;
+            }
             peer.state = *pState;
             peer.stateReceivedAt = receivedAt;
         }
@@ -109,6 +143,7 @@ std::optional<ReferenceStatus> PeerTable::reference(
     const StatePacket& state = *peer.state;
     ReferenceStatus status{
             *playerId, state.playing, state.bpm, peer.clock.estimate(), std::nullopt};
+    status.positionJumps = peer.positionJumps;
     if (status.clock) {
         const PhaseSample referencePhase{
                 state.playing,
