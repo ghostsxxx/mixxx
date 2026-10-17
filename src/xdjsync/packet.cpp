@@ -18,6 +18,9 @@ enum class PacketType : quint8 {
 };
 
 constexpr quint8 kFlagPlaying = 1 << 0;
+constexpr quint8 kFlagBeatIndexValid = 1 << 1;
+/// cueCountdownBeats on the wire when there is no cue ahead.
+constexpr double kNoCueCountdown = -1.0;
 
 void prepare(QDataStream* pStream) {
     pStream->setByteOrder(QDataStream::LittleEndian);
@@ -65,13 +68,15 @@ void writePayload(QDataStream* pStream, const StatePacket& state) {
     writeHeader(pStream, PacketType::State);
     writeId(pStream, state.playerId);
     *pStream << state.seq
-             << static_cast<quint8>(state.playing ? kFlagPlaying : 0)
+             << static_cast<quint8>((state.playing ? kFlagPlaying : 0) |
+                        (state.beatIndexValid ? kFlagBeatIndexValid : 0))
              << static_cast<quint8>(state.syncMode)
              << state.bpm
              << state.beatDistance
              << state.beatIndex;
     writeTime(pStream, state.atDac);
     writeTime(pStream, state.playingFor);
+    *pStream << state.cueCountdownBeats.value_or(kNoCueCountdown);
 }
 
 void writePayload(QDataStream* pStream, const PingPacket& ping) {
@@ -106,12 +111,22 @@ std::optional<Packet> readState(QDataStream* pStream) {
     if (pStream->status() != QDataStream::Ok) {
         return std::nullopt;
     }
-    // Appended field, absent in older packets.
+    // Appended fields, absent in older packets.
     if (!pStream->atEnd()) {
         state.playingFor = readTime(pStream);
-        if (pStream->status() != QDataStream::Ok) {
+    }
+    if (!pStream->atEnd()) {
+        double cueCountdownBeats = kNoCueCountdown;
+        *pStream >> cueCountdownBeats;
+        if (!util_isfinite(cueCountdownBeats)) {
             return std::nullopt;
         }
+        if (cueCountdownBeats >= 0.0) {
+            state.cueCountdownBeats = cueCountdownBeats;
+        }
+    }
+    if (pStream->status() != QDataStream::Ok) {
+        return std::nullopt;
     }
     if (syncMode > static_cast<quint8>(PlayerSyncMode::Master)) {
         return std::nullopt;
@@ -121,6 +136,7 @@ std::optional<Packet> readState(QDataStream* pStream) {
         return std::nullopt;
     }
     state.playing = (flags & kFlagPlaying) != 0;
+    state.beatIndexValid = (flags & kFlagBeatIndexValid) != 0;
     state.syncMode = static_cast<PlayerSyncMode>(syncMode);
     return state;
 }

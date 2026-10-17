@@ -9,6 +9,13 @@
 
 namespace mixxx::xdjsync {
 
+/// This deck as heard at the DAC.
+struct EngineSample {
+    PhaseSample phase;
+    /// Track position in frames, at the same instant as phase.
+    double trackFrame;
+};
+
 /// Hands this player's beat phase from the audio thread to the network
 /// thread, timed to when it is heard (D5). One writer (audio thread), any
 /// number of readers; lock-free and allocation-free.
@@ -23,15 +30,19 @@ class EnginePhaseBuffer {
 
     /// Audio thread, after the engine updated beat_distance for the
     /// rendered buffer. Ignored until setFirstSampleAtDac was called.
-    void publish(bool playing, double bpm, double beatDistance, Duration bufferDuration);
+    void publish(bool playing,
+            double bpm,
+            double beatDistance,
+            double trackFrame,
+            Duration bufferDuration);
 
     /// Any thread.
-    std::optional<PhaseSample> latest(Duration now) const;
+    std::optional<EngineSample> latest(Duration now) const;
 
   private:
     struct Slot {
         bool valid = false;
-        PhaseSample sample{};
+        EngineSample sample{};
     };
 
     // Only touched by the audio thread.
@@ -51,6 +62,8 @@ class EngineDeckPhaseSource {
     PollingControlProxy m_play;
     PollingControlProxy m_bpm;
     PollingControlProxy m_beatDistance;
+    PollingControlProxy m_playPosition;
+    PollingControlProxy m_trackSamples;
 };
 
 /// Delay from audio callback entry to the DAC, in seconds: the driver's own

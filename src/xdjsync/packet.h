@@ -41,6 +41,11 @@ struct StatePacket {
     /// How long the deck has been playing without a stop; 0 if stopped.
     /// Used for the automatic master (D18). Optional on the wire (appended).
     Duration playingFor{};
+    /// beatIndex counts from the grid's first downbeat (bar position known).
+    bool beatIndexValid = false;
+    /// Beats from atDac to the next cue; empty if none. Optional on the wire
+    /// (appended).
+    std::optional<double> cueCountdownBeats{};
 };
 
 /// Clock alignment request, unicast to one peer.

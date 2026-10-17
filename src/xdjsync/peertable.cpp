@@ -115,8 +115,17 @@ std::optional<ReferenceStatus> PeerTable::reference(
                 state.bpm,
                 state.beatDistance,
                 status.clock->toLocal(state.atDac),
+                state.beatIndexValid ? std::optional(state.beatIndex) : std::nullopt,
         };
         status.offset = beatOffset(local, referencePhase, now);
+        status.barPosition = barPosition(referencePhase, now);
+        if (state.cueCountdownBeats) {
+            // The countdown runs down with the reference's play position.
+            const double beatsSinceSample =
+                    projectPhase(referencePhase, now) - referencePhase.beatDistance;
+            status.cueCountdownBeats =
+                    std::max(0.0, *state.cueCountdownBeats - beatsSinceSample);
+        }
     }
     return status;
 }

@@ -205,4 +205,48 @@ TEST(XdjSyncPeerTableTest, ClockSurvivesUntilPeerExpires) {
     EXPECT_FALSE(ref->clock.has_value());
 }
 
+TEST(XdjSyncPeerTableTest, ReferenceCarriesBarAndCueCountdown) {
+    PeerTable table(QStringLiteral("me"));
+    alignClock(&table, QStringLiteral("p2"), ms(0), ms(0));
+    StatePacket peer = state(QStringLiteral("p2"),
+            true,
+            PlayerSyncMode::Free,
+            120.0,
+            0.5,
+            ms(600),
+            ms(60000));
+    peer.beatIndex = 6; // beat 3 of the bar
+    peer.beatIndexValid = true;
+    peer.cueCountdownBeats = 32.0;
+    table.handlePacket(peer, ms(600));
+    // 500 ms later = 1 beat on at 120 BPM.
+    const PhaseSample local{true, 120.0, 0.5, ms(1100), 3};
+    const auto ref = table.reference(local, ms(0), ms(1100));
+    ASSERT_TRUE(ref.has_value());
+    ASSERT_TRUE(ref->barPosition.has_value());
+    EXPECT_NEAR(3.5, *ref->barPosition, 1e-6);
+    ASSERT_TRUE(ref->cueCountdownBeats.has_value());
+    EXPECT_NEAR(31.0, *ref->cueCountdownBeats, 1e-6);
+    ASSERT_TRUE(ref->offset.has_value());
+    EXPECT_EQ(0, ref->offset->beatsOffInBar);
+}
+
+TEST(XdjSyncPeerTableTest, NoBarWithoutValidBeatIndex) {
+    PeerTable table(QStringLiteral("me"));
+    alignClock(&table, QStringLiteral("p2"), ms(0), ms(0));
+    StatePacket peer = state(QStringLiteral("p2"),
+            true,
+            PlayerSyncMode::Free,
+            120.0,
+            0.5,
+            ms(600),
+            ms(60000));
+    peer.beatIndex = 6;
+    table.handlePacket(peer, ms(600));
+    const auto ref = table.reference(PhaseSample{true, 120.0, 0.5, ms(1100), 3}, ms(0), ms(1100));
+    ASSERT_TRUE(ref.has_value());
+    EXPECT_FALSE(ref->barPosition.has_value());
+    EXPECT_FALSE(ref->offset->barOffsetBeats.has_value());
+}
+
 } // namespace

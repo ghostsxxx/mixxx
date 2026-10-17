@@ -19,7 +19,7 @@ TEST(XdjSyncEnginePhaseTest, EmptyBeforePublish) {
 
 TEST(XdjSyncEnginePhaseTest, IgnoresPublishWithoutDacTime) {
     EnginePhaseBuffer buffer;
-    buffer.publish(true, 128.0, 0.25, ms(10));
+    buffer.publish(true, 128.0, 0.25, 96000.0, ms(10));
     EXPECT_FALSE(buffer.latest(ms(0)).has_value());
 }
 
@@ -29,25 +29,27 @@ TEST(XdjSyncEnginePhaseTest, PhaseIsHeardAtEndOfBuffer) {
     // buffer's first sample.
     EnginePhaseBuffer buffer;
     buffer.setFirstSampleAtDac(ms(1020));
-    buffer.publish(true, 128.0, 0.25, ms(10));
+    buffer.publish(true, 128.0, 0.25, 96000.0, ms(10));
     const auto sample = buffer.latest(ms(1000));
     ASSERT_TRUE(sample.has_value());
-    EXPECT_TRUE(sample->playing);
-    EXPECT_DOUBLE_EQ(128.0, sample->bpm);
-    EXPECT_DOUBLE_EQ(0.25, sample->beatDistance);
-    EXPECT_EQ(ms(1030), sample->atDac);
+    EXPECT_TRUE(sample->phase.playing);
+    EXPECT_DOUBLE_EQ(128.0, sample->phase.bpm);
+    EXPECT_DOUBLE_EQ(0.25, sample->phase.beatDistance);
+    EXPECT_EQ(ms(1030), sample->phase.atDac);
+    // Track position after the buffer, same instant as beatDistance.
+    EXPECT_DOUBLE_EQ(96000.0, sample->trackFrame);
 }
 
 TEST(XdjSyncEnginePhaseTest, LatestWins) {
     EnginePhaseBuffer buffer;
     buffer.setFirstSampleAtDac(ms(1000));
-    buffer.publish(true, 128.0, 0.1, ms(10));
+    buffer.publish(true, 128.0, 0.1, 0.0, ms(10));
     buffer.setFirstSampleAtDac(ms(1010));
-    buffer.publish(true, 128.0, 0.12, ms(10));
+    buffer.publish(true, 128.0, 0.12, 0.0, ms(10));
     const auto sample = buffer.latest(ms(1000));
     ASSERT_TRUE(sample.has_value());
-    EXPECT_DOUBLE_EQ(0.12, sample->beatDistance);
-    EXPECT_EQ(ms(1020), sample->atDac);
+    EXPECT_DOUBLE_EQ(0.12, sample->phase.beatDistance);
+    EXPECT_EQ(ms(1020), sample->phase.atDac);
 }
 
 TEST(XdjSyncEnginePhaseTest, StaleSampleIsDropped) {
@@ -55,7 +57,7 @@ TEST(XdjSyncEnginePhaseTest, StaleSampleIsDropped) {
     // phase as if the deck were still playing.
     EnginePhaseBuffer buffer;
     buffer.setFirstSampleAtDac(ms(1000));
-    buffer.publish(true, 128.0, 0.1, ms(10));
+    buffer.publish(true, 128.0, 0.1, 0.0, ms(10));
     EXPECT_TRUE(buffer.latest(ms(1010) + EnginePhaseBuffer::kMaxAge).has_value());
     EXPECT_FALSE(buffer.latest(ms(1011) + EnginePhaseBuffer::kMaxAge).has_value());
 }

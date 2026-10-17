@@ -34,6 +34,12 @@ class PhaseFollower {
     /// Don't chase phase with a worse clock alignment than this.
     static constexpr double kMaxClockUncertaintyMs = 5.0;
 
+    /// `alignBars`: BEAT mode also puts beat 1 on beat 1 (4/4), when both
+    /// players know their bar position; else only the beat is aligned.
+    explicit PhaseFollower(bool alignBars = true)
+            : m_alignBars(alignBars) {
+    }
+
     SyncAction update(PlayerSyncMode ownMode,
             bool localPlaying,
             double localBpm,
@@ -41,6 +47,7 @@ class PhaseFollower {
             Duration now);
 
   private:
+    const bool m_alignBars;
     std::optional<Duration> m_lastSnap;
 };
 

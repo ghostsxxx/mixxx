@@ -1768,7 +1768,9 @@ add_library(
   src/widget/wwidgetstack.cpp
   src/xdjsync/beatphase.cpp
   src/xdjsync/clockestimator.cpp
+  src/xdjsync/countdown.cpp
   src/xdjsync/enginephase.cpp
+  src/xdjsync/gridposition.cpp
   src/xdjsync/packet.cpp
   src/xdjsync/peertable.cpp
   src/xdjsync/phasefollower.cpp
@@ -2823,7 +2825,9 @@ if(BUILD_TESTING)
     src/test/wwidgetstack_test.cpp
     src/test/xdjsyncbeatphasetest.cpp
     src/test/xdjsyncclocktest.cpp
+    src/test/xdjsynccountdowntest.cpp
     src/test/xdjsyncenginephasetest.cpp
+    src/test/xdjsyncgridpositiontest.cpp
     src/test/xdjsyncpackettest.cpp
     src/test/xdjsyncpeertabletest.cpp
     src/test/xdjsyncphasefollowertest.cpp

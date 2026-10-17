@@ -18,6 +18,8 @@ StatePacket makeState() {
             -3,
             Duration::fromNanos(123456789012345),
             Duration::fromMillis(95000),
+            true,
+            37.5,
     };
 }
 
@@ -36,12 +38,34 @@ TEST(XdjSyncPacketTest, StateRoundTrip) {
     EXPECT_EQ(state.beatIndex, pState->beatIndex);
     EXPECT_EQ(state.atDac, pState->atDac);
     EXPECT_EQ(state.playingFor, pState->playingFor);
+    EXPECT_TRUE(pState->beatIndexValid);
+    EXPECT_EQ(state.cueCountdownBeats, pState->cueCountdownBeats);
+}
+
+TEST(XdjSyncPacketTest, StateWithoutGridOrCue) {
+    auto state = makeState();
+    state.beatIndexValid = false;
+    state.cueCountdownBeats.reset();
+    const auto decoded = decodePacket(encodePacket(state));
+    ASSERT_TRUE(decoded.has_value());
+    EXPECT_FALSE(std::get<StatePacket>(*decoded).beatIndexValid);
+    EXPECT_FALSE(std::get<StatePacket>(*decoded).cueCountdownBeats.has_value());
+}
+
+TEST(XdjSyncPacketTest, StateWithoutCueCountdownDecodesAsNone) {
+    // Packets from before cueCountdownBeats was appended.
+    QByteArray bytes = encodePacket(makeState());
+    bytes.chop(8);
+    const auto decoded = decodePacket(bytes);
+    ASSERT_TRUE(decoded.has_value());
+    EXPECT_EQ(Duration::fromMillis(95000), std::get<StatePacket>(*decoded).playingFor);
+    EXPECT_FALSE(std::get<StatePacket>(*decoded).cueCountdownBeats.has_value());
 }
 
 TEST(XdjSyncPacketTest, StateWithoutPlayingForDecodesAsZero) {
     // Packets from before playingFor was appended (8 bytes at the end).
     QByteArray bytes = encodePacket(makeState());
-    bytes.chop(8);
+    bytes.chop(16);
     const auto decoded = decodePacket(bytes);
     ASSERT_TRUE(decoded.has_value());
     EXPECT_EQ(Duration(), std::get<StatePacket>(*decoded).playingFor);
@@ -108,8 +132,8 @@ TEST(XdjSyncPacketTest, RejectsUnknownType) {
 }
 
 TEST(XdjSyncPacketTest, RejectsEveryTruncation) {
-    // Up to the last mandatory field; playingFor is optional (see above).
-    const QByteArray bytes = encodePacket(makeState()).chopped(8);
+    // Up to the last mandatory field; the appended fields are optional.
+    const QByteArray bytes = encodePacket(makeState()).chopped(16);
     for (int size = 0; size < bytes.size(); ++size) {
         EXPECT_FALSE(decodePacket(bytes.left(size)).has_value()) << "size " << size;
     }

@@ -29,6 +29,40 @@ ReferenceStatus reference(double offsetMs,
     };
 }
 
+/// Like reference(), but this player is `wholeBeats` off in the bar.
+ReferenceStatus referenceOffInBar(int wholeBeats, double offsetMs) {
+    ReferenceStatus ref = reference(offsetMs);
+    ref.offset->barOffsetBeats = wholeBeats + offsetMs / kMsPerBeat;
+    ref.offset->beatsOffInBar = wholeBeats;
+    return ref;
+}
+
+TEST(XdjSyncPhaseFollowerTest, BeatModeAlignsBar) {
+    // On the beat, but one beat ahead in the bar: jump back one beat (plus the
+    // fraction), even though the in-beat offset is tiny.
+    PhaseFollower follower;
+    const auto action = follower.update(
+            PlayerSyncMode::Beat, true, kRefBpm, referenceOffInBar(1, 0.3), ms(0));
+    ASSERT_TRUE(action.beatJump.has_value());
+    EXPECT_NEAR(-(1.0 + 0.3 / kMsPerBeat), *action.beatJump, 1e-12);
+}
+
+TEST(XdjSyncPhaseFollowerTest, BarAlignmentCanBeOff) {
+    PhaseFollower follower(false);
+    const auto action = follower.update(
+            PlayerSyncMode::Beat, true, kRefBpm, referenceOffInBar(-2, 0.3), ms(0));
+    EXPECT_FALSE(action.beatJump.has_value());
+}
+
+TEST(XdjSyncPhaseFollowerTest, SnapAlsoAlignsBar) {
+    // 30 ms behind and one beat behind in the bar: one jump fixes both.
+    PhaseFollower follower;
+    const auto action = follower.update(
+            PlayerSyncMode::Beat, true, kRefBpm, referenceOffInBar(-1, -30.0), ms(0));
+    ASSERT_TRUE(action.beatJump.has_value());
+    EXPECT_NEAR(1.0 + 30.0 / kMsPerBeat, *action.beatJump, 1e-12);
+}
+
 TEST(XdjSyncPhaseFollowerTest, FreeAndMasterDoNothing) {
     PhaseFollower follower;
     for (auto mode : {PlayerSyncMode::Free, PlayerSyncMode::Master}) {

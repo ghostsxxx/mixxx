@@ -15,30 +15,44 @@ std::atomic<const EngineDeckPhaseSource*> s_pSource{nullptr};
 EngineDeckPhaseSource::EngineDeckPhaseSource()
         : m_play(kDeckGroup, QStringLiteral("play")),
           m_bpm(kDeckGroup, QStringLiteral("bpm")),
-          m_beatDistance(kDeckGroup, QStringLiteral("beat_distance")) {
+          m_beatDistance(kDeckGroup, QStringLiteral("beat_distance")),
+          m_playPosition(kDeckGroup, QStringLiteral("playposition")),
+          m_trackSamples(kDeckGroup, QStringLiteral("track_samples")) {
 }
 
 void EngineDeckPhaseSource::publish(EnginePhaseBuffer* pBuffer, Duration bufferDuration) const {
-    pBuffer->publish(m_play.toBool(), m_bpm.get(), m_beatDistance.get(), bufferDuration);
+    // playposition is the fraction of the track, track_samples counts
+    // interleaved stereo samples.
+    const double trackFrame = m_playPosition.get() * m_trackSamples.get() / 2.0;
+    pBuffer->publish(m_play.toBool(),
+            m_bpm.get(),
+            m_beatDistance.get(),
+            trackFrame,
+            bufferDuration);
 }
 
 void EnginePhaseBuffer::setFirstSampleAtDac(Duration atDac) {
     m_firstSampleAtDac = atDac;
 }
 
-void EnginePhaseBuffer::publish(
-        bool playing, double bpm, double beatDistance, Duration bufferDuration) {
+void EnginePhaseBuffer::publish(bool playing,
+        double bpm,
+        double beatDistance,
+        double trackFrame,
+        Duration bufferDuration) {
     if (!m_firstSampleAtDac) {
         return;
     }
     // beat_distance belongs to the play position after the rendered buffer.
     m_latest.setValue(Slot{true,
-            PhaseSample{playing, bpm, beatDistance, *m_firstSampleAtDac + bufferDuration}});
+            EngineSample{
+                    PhaseSample{playing, bpm, beatDistance, *m_firstSampleAtDac + bufferDuration},
+                    trackFrame}});
 }
 
-std::optional<PhaseSample> EnginePhaseBuffer::latest(Duration now) const {
+std::optional<EngineSample> EnginePhaseBuffer::latest(Duration now) const {
     const Slot slot = m_latest.getValue();
-    if (!slot.valid || now - slot.sample.atDac > kMaxAge) {
+    if (!slot.valid || now - slot.sample.phase.atDac > kMaxAge) {
         return std::nullopt;
     }
     return slot.sample;

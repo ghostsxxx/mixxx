@@ -11,6 +11,8 @@ using mixxx::xdjsync::beatOffset;
 using mixxx::xdjsync::inSync;
 using mixxx::xdjsync::kInSyncMs;
 using mixxx::xdjsync::projectPhase;
+using mixxx::xdjsync::barPosition;
+using mixxx::xdjsync::beatInBar;
 using mixxx::xdjsync::wrapHalfBeat;
 
 constexpr double kMsTolerance = 1e-6;
@@ -145,6 +147,86 @@ TEST(XdjSyncBeatPhaseTest, InSyncWithinThreshold) {
     // Unless the tempo difference is a deliberate phase trim (BEAT mode).
     EXPECT_TRUE(inSync(offsetAt(0.0, 121.0), true));
     EXPECT_FALSE(inSync(offsetAt(kInSyncMs + 0.1, 121.0), true));
+}
+
+PhaseSample playingAtBeat(double bpm, qint64 beatIndex, double beatDistance) {
+    return PhaseSample{true, bpm, beatDistance, ms(1000), beatIndex};
+}
+
+TEST(XdjSyncBeatPhaseTest, BeatInBar) {
+    EXPECT_EQ(1, beatInBar(0));
+    EXPECT_EQ(4, beatInBar(3));
+    EXPECT_EQ(1, beatInBar(4));
+    EXPECT_EQ(2, beatInBar(17));
+    // Before the grid's first downbeat.
+    EXPECT_EQ(4, beatInBar(-1));
+    EXPECT_EQ(1, beatInBar(-4));
+}
+
+TEST(XdjSyncBeatPhaseTest, BarPositionProjected) {
+    // Beat 2 of the bar (index 5), a quarter in, at 1000 ms; 120 BPM.
+    const PhaseSample sample = playingAtBeat(120.0, 5, 0.25);
+    EXPECT_NEAR(1.25, *barPosition(sample, ms(1000)), 1e-9);
+    // 1500 ms later: 3 beats on -> beat 1 of the next bar.
+    EXPECT_NEAR(0.25, *barPosition(sample, ms(2500)), 1e-9);
+    PhaseSample noGrid = sample;
+    noGrid.beatIndex.reset();
+    EXPECT_FALSE(barPosition(noGrid, ms(1000)).has_value());
+}
+
+TEST(XdjSyncBeatPhaseTest, SameBeatInBar) {
+    const auto offset = beatOffset(
+            playingAtBeat(120.0, 9, 0.3), playingAtBeat(120.0, 1, 0.2), ms(1000));
+    ASSERT_TRUE(offset.has_value());
+    ASSERT_TRUE(offset->barOffsetBeats.has_value());
+    EXPECT_NEAR(0.1, *offset->barOffsetBeats, 1e-9);
+    EXPECT_EQ(0, offset->beatsOffInBar);
+}
+
+TEST(XdjSyncBeatPhaseTest, OneBeatAheadInBar) {
+    // Local on beat 3 of its bar, reference on beat 2: one beat ahead.
+    const auto offset = beatOffset(
+            playingAtBeat(120.0, 2, 0.3), playingAtBeat(120.0, 5, 0.2), ms(1000));
+    ASSERT_TRUE(offset.has_value());
+    EXPECT_NEAR(1.1, *offset->barOffsetBeats, 1e-9);
+    EXPECT_EQ(1, offset->beatsOffInBar);
+    // Within the beat it's still the same +0.1 beat.
+    EXPECT_NEAR(50.0, offset->offsetMs, 1e-6);
+}
+
+TEST(XdjSyncBeatPhaseTest, BarOffsetWrapsToNearest) {
+    // Local beat 4, reference beat 1: one beat behind, not three ahead.
+    const auto offset = beatOffset(
+            playingAtBeat(120.0, 3, 0.5), playingAtBeat(120.0, 0, 0.5), ms(1000));
+    ASSERT_TRUE(offset.has_value());
+    EXPECT_NEAR(-1.0, *offset->barOffsetBeats, 1e-9);
+    EXPECT_EQ(-1, offset->beatsOffInBar);
+}
+
+TEST(XdjSyncBeatPhaseTest, BarOffsetFollowsProjection) {
+    // Reference sample is two beats old: it moved on to the next bar's beat 1.
+    PhaseSample reference = playingAtBeat(120.0, 2, 0.5);
+    reference.atDac = ms(0); // 1000 ms earlier = 2 beats at 120 BPM
+    const auto offset = beatOffset(playingAtBeat(120.0, 4, 0.5), reference, ms(1000));
+    ASSERT_TRUE(offset.has_value());
+    EXPECT_NEAR(0.0, *offset->barOffsetBeats, 1e-9);
+}
+
+TEST(XdjSyncBeatPhaseTest, NoBarOffsetWithoutBeatIndex) {
+    PhaseSample reference = playingAtBeat(120.0, 2, 0.5);
+    reference.beatIndex.reset();
+    const auto offset = beatOffset(playingAtBeat(120.0, 4, 0.5), reference, ms(1000));
+    ASSERT_TRUE(offset.has_value());
+    EXPECT_FALSE(offset->barOffsetBeats.has_value());
+    EXPECT_EQ(0, offset->beatsOffInBar);
+}
+
+TEST(XdjSyncBeatPhaseTest, NotInSyncWithWrongBeatInBar) {
+    const auto offset = beatOffset(
+            playingAtBeat(120.0, 2, 0.5), playingAtBeat(120.0, 5, 0.5), ms(1000));
+    ASSERT_TRUE(offset.has_value());
+    EXPECT_NEAR(0.0, offset->offsetMs, 1e-9);
+    EXPECT_FALSE(inSync(*offset));
 }
 
 TEST(XdjSyncBeatPhaseTest, NoOffsetWithoutValidBpm) {

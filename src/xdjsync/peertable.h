@@ -21,6 +21,11 @@ struct ReferenceStatus {
     std::optional<ClockEstimate> clock;
     /// Empty without clock alignment or without a valid tempo on both sides.
     std::optional<BeatOffset> offset;
+    /// Reference's beats into its bar now, [0, 4); empty without clock
+    /// alignment or bar position.
+    std::optional<double> barPosition{};
+    /// Reference's beats to its next cue, now; empty if none or unknown.
+    std::optional<double> cueCountdownBeats{};
 };
 
 /// Known players on the network, without any I/O. All times are on the

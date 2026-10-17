@@ -30,6 +30,7 @@ class EngineDeckPhaseSource;
 ///   Port             default 51760
 ///   BroadcastAddress default 255.255.255.255
 ///   SyncType         beat (tempo + phase, default) or bpm (tempo only)
+///   SyncAlign        bar (beat 1 on beat 1, default) or beat
 class XdjSyncService : public QObject {
     Q_OBJECT
   public:
@@ -57,6 +58,20 @@ class XdjSyncService : public QObject {
         std::unique_ptr<ControlObject> pRefBpmDelta;
         std::unique_ptr<ControlObject> pRefDrifting;
         std::unique_ptr<ControlObject> pRefClockUncertaintyMs;
+        /// Beat within the 4/4 bar, 1..4 (0 = unknown); own and reference.
+        std::unique_ptr<ControlObject> pBarBeat;
+        std::unique_ptr<ControlObject> pRefBarBeat;
+        /// Whole beats this player is off in the bar, -2..1.
+        std::unique_ptr<ControlObject> pRefBeatsOff;
+        /// Countdown to the next cue as bars.beat; own and reference.
+        std::unique_ptr<ControlObject> pCueCountdownValid;
+        std::unique_ptr<ControlObject> pCueCountdownBars;
+        std::unique_ptr<ControlObject> pCueCountdownBeat;
+        std::unique_ptr<ControlObject> pRefCueCountdownValid;
+        std::unique_ptr<ControlObject> pRefCueCountdownBars;
+        std::unique_ptr<ControlObject> pRefCueCountdownBeat;
+        /// Push: the beat at the play position becomes beat 1 of the bar.
+        std::unique_ptr<ControlObject> pSetDownbeat;
     };
 
   private:

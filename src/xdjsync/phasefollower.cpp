@@ -23,13 +23,18 @@ SyncAction PhaseFollower::update(PlayerSyncMode ownMode,
         return tempoOnly;
     }
 
-    const double offsetMs = reference->offset->offsetMs;
-    if (std::abs(offsetMs) > kSnapMs) {
+    const BeatOffset& offset = *reference->offset;
+    const double offsetMs = offset.offsetMs;
+    // With bar alignment the jump target is the reference's beat in the bar.
+    const bool barKnown = m_alignBars && offset.barOffsetBeats.has_value();
+    const bool wrongBeatInBar = barKnown && offset.beatsOffInBar != 0;
+    if (wrongBeatInBar || std::abs(offsetMs) > kSnapMs) {
         if (m_lastSnap && now - *m_lastSnap < kSnapCooldown) {
             return tempoOnly;
         }
         m_lastSnap = now;
-        return SyncAction{tempoOnly.targetBpm, -reference->offset->offsetBeats};
+        return SyncAction{tempoOnly.targetBpm,
+                barKnown ? -*offset.barOffsetBeats : -offset.offsetBeats};
     }
     if (std::abs(offsetMs) < kDeadbandMs) {
         return tempoOnly;
