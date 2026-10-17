@@ -584,9 +584,7 @@ void CoreServices::initialize(QApplication* pApp) {
 
     m_pPlayerManager->addConfiguredDecks();
 
-    if (mixxx::xdjsync::XdjSyncService::isEnabled(pConfig)) {
-        m_pXdjSyncService = std::make_shared<mixxx::xdjsync::XdjSyncService>(pConfig);
-    }
+    m_pXdjSyncService = std::make_shared<mixxx::xdjsync::XdjSyncService>(pConfig);
 
     for (int i = 0; i < kSamplerCount; ++i) {
         m_pPlayerManager->addSampler();

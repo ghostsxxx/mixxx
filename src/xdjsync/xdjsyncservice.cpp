@@ -157,6 +157,8 @@ class XdjSyncWorker : public QObject {
         const bool valid = reference && reference->offset;
         c.pRefOffsetValid->forceSet(valid ? 1.0 : 0.0);
         c.pRefOffsetMs->forceSet(valid ? reference->offset->offsetMs : 0.0);
+        c.pRefPhase->forceSet(valid ? 0.5 + reference->offset->offsetBeats : 0.5);
+        c.pRefInSync->forceSet(valid && inSync(*reference->offset) ? 1.0 : 0.0);
         c.pRefBpmDelta->forceSet(valid ? reference->offset->bpmDelta : 0.0);
         c.pRefDrifting->forceSet(valid && reference->offset->drifting ? 1.0 : 0.0);
 
@@ -192,10 +194,6 @@ class XdjSyncWorker : public QObject {
     int m_logTicks = 0;
 };
 
-bool XdjSyncService::isEnabled(const UserSettingsPointer& pConfig) {
-    return pConfig->getValue<bool>(key("Enabled"), false);
-}
-
 XdjSyncService::XdjSyncService(UserSettingsPointer pConfig) {
     m_controls.pEnabled = makeReadOnly("enabled");
     m_controls.pSyncMode = std::make_unique<ControlObject>(key("sync_mode"));
@@ -203,10 +201,17 @@ XdjSyncService::XdjSyncService(UserSettingsPointer pConfig) {
     m_controls.pRefPresent = makeReadOnly("ref_present");
     m_controls.pRefOffsetValid = makeReadOnly("ref_offset_valid");
     m_controls.pRefOffsetMs = makeReadOnly("ref_offset_ms");
+    m_controls.pRefPhase = makeReadOnly("ref_phase");
+    m_controls.pRefPhase->forceSet(0.5);
+    m_controls.pRefInSync = makeReadOnly("ref_in_sync");
     m_controls.pRefBpm = makeReadOnly("ref_bpm");
     m_controls.pRefBpmDelta = makeReadOnly("ref_bpm_delta");
     m_controls.pRefDrifting = makeReadOnly("ref_drifting");
     m_controls.pRefClockUncertaintyMs = makeReadOnly("ref_clock_uncertainty_ms");
+
+    if (!pConfig->getValue<bool>(key("Enabled"), false)) {
+        return;
+    }
 
     const QString playerId = pConfig->getValue(key("PlayerId"), QHostInfo::localHostName());
     const auto port = static_cast<quint16>(pConfig->getValue(key("Port"), static_cast<int>(kDefaultPort)));
@@ -222,6 +227,7 @@ XdjSyncService::XdjSyncService(UserSettingsPointer pConfig) {
 }
 
 XdjSyncService::~XdjSyncService() {
+    // No-op if the thread was never started.
     m_thread.quit();
     m_thread.wait();
 }

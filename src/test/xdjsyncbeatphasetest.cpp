@@ -8,6 +8,8 @@ using mixxx::Duration;
 using mixxx::xdjsync::BeatOffset;
 using mixxx::xdjsync::PhaseSample;
 using mixxx::xdjsync::beatOffset;
+using mixxx::xdjsync::inSync;
+using mixxx::xdjsync::kInSyncMs;
 using mixxx::xdjsync::projectPhase;
 using mixxx::xdjsync::wrapHalfBeat;
 
@@ -63,6 +65,7 @@ TEST(XdjSyncBeatPhaseTest, LocalAheadIsPositive) {
     const auto offset = beatOffset(local, peer, ms(1000));
     ASSERT_TRUE(offset.has_value());
     EXPECT_NEAR(50.0, offset->offsetMs, kMsTolerance);
+    EXPECT_NEAR(0.1, offset->offsetBeats, 1e-9);
 }
 
 TEST(XdjSyncBeatPhaseTest, LocalBehindIsNegative) {
@@ -123,6 +126,22 @@ TEST(XdjSyncBeatPhaseTest, TinyBpmDeltaIsNotDrifting) {
     const auto offset = beatOffset(local, peer, ms(1000));
     ASSERT_TRUE(offset.has_value());
     EXPECT_FALSE(offset->drifting);
+}
+
+TEST(XdjSyncBeatPhaseTest, InSyncWithinThreshold) {
+    const double msPerBeat = 60000.0 / 120.0;
+    const auto offsetAt = [&](double offsetMs, double peerBpm = 120.0) {
+        const auto local = playing(120.0, 0.5 + offsetMs / msPerBeat, ms(1000));
+        const auto peer = playing(peerBpm, 0.5, ms(1000));
+        return *beatOffset(local, peer, ms(1000));
+    };
+    EXPECT_TRUE(inSync(offsetAt(0.0)));
+    EXPECT_TRUE(inSync(offsetAt(kInSyncMs - 0.1)));
+    EXPECT_TRUE(inSync(offsetAt(-(kInSyncMs - 0.1))));
+    EXPECT_FALSE(inSync(offsetAt(kInSyncMs + 0.1)));
+    EXPECT_FALSE(inSync(offsetAt(-(kInSyncMs + 0.1))));
+    // Aligned right now, but drifting apart: not in sync.
+    EXPECT_FALSE(inSync(offsetAt(0.0, 121.0)));
 }
 
 TEST(XdjSyncBeatPhaseTest, NoOffsetWithoutValidBpm) {

@@ -34,10 +34,15 @@ std::optional<BeatOffset> beatOffset(
     const double bpmDelta = local.bpm - reference.bpm;
     return BeatOffset{
             offsetBeats * msPerBeat,
+            offsetBeats,
             bpmDelta,
             std::abs(bpmDelta) >= kDriftBpmThreshold,
             bpmDelta / kSecondsPerMinute * msPerBeat,
     };
+}
+
+bool inSync(const BeatOffset& offset) {
+    return !offset.drifting && std::abs(offset.offsetMs) <= kInSyncMs;
 }
 
 } // namespace mixxx::xdjsync

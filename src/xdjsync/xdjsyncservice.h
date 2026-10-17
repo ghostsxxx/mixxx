@@ -16,7 +16,9 @@ class XdjSyncWorker;
 /// Network sync between XDJ100SX players (see XDJ100SX sync/DESIGN.md).
 ///
 /// Owns the [XdjSync] controls and runs all networking on its own thread, so
-/// neither the GUI nor the audio thread ever wait on the network.
+/// neither the GUI nor the audio thread ever wait on the network. The
+/// controls always exist (so skins can bind to them); the network thread
+/// only runs if enabled.
 ///
 /// Config ([XdjSync] in mixxx.cfg):
 ///   Enabled          0/1, default 0
@@ -31,8 +33,6 @@ class XdjSyncService : public QObject {
     explicit XdjSyncService(UserSettingsPointer pConfig);
     ~XdjSyncService() override;
 
-    static bool isEnabled(const UserSettingsPointer& pConfig);
-
     /// Controls shared with the worker thread. ControlObject::set/get are
     /// thread-safe; the objects themselves stay owned by the main thread.
     struct Controls {
@@ -42,6 +42,9 @@ class XdjSyncService : public QObject {
         std::unique_ptr<ControlObject> pRefPresent;
         std::unique_ptr<ControlObject> pRefOffsetValid;
         std::unique_ptr<ControlObject> pRefOffsetMs;
+        /// 0.5 + offset in beats: 0..1 with 0.5 = aligned, for a phase meter.
+        std::unique_ptr<ControlObject> pRefPhase;
+        std::unique_ptr<ControlObject> pRefInSync;
         std::unique_ptr<ControlObject> pRefBpm;
         std::unique_ptr<ControlObject> pRefBpmDelta;
         std::unique_ptr<ControlObject> pRefDrifting;
@@ -51,7 +54,7 @@ class XdjSyncService : public QObject {
   private:
     Controls m_controls;
     QThread m_thread;
-    XdjSyncWorker* m_pWorker;
+    XdjSyncWorker* m_pWorker = nullptr;
 };
 
 } // namespace mixxx::xdjsync

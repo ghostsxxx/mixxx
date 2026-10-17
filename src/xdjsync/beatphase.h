@@ -21,6 +21,8 @@ struct PhaseSample {
 struct BeatOffset {
     /// Positive: local beat comes before the reference beat (local is ahead).
     double offsetMs;
+    /// Same as offsetMs in beats, [-0.5, 0.5).
+    double offsetBeats;
     /// local bpm - reference bpm.
     double bpmDelta;
     /// True if the tempo difference makes the offset change noticeably.
@@ -33,6 +35,10 @@ struct BeatOffset {
 /// 0.01 BPM at 174 BPM drifts ~0.06 ms per second.
 constexpr double kDriftBpmThreshold = 0.01;
 
+/// Offsets up to this are shown as "in sync": well below an audible flam
+/// (~10 ms), with margin for the display accuracy.
+constexpr double kInSyncMs = 5.0;
+
 /// Wraps a phase difference in beats into [-0.5, 0.5).
 double wrapHalfBeat(double beats);
 
@@ -43,5 +49,8 @@ double projectPhase(const PhaseSample& sample, Duration now);
 /// Empty if either tempo is unknown.
 std::optional<BeatOffset> beatOffset(
         const PhaseSample& local, const PhaseSample& reference, Duration now);
+
+/// Within kInSyncMs and not drifting apart.
+bool inSync(const BeatOffset& offset);
 
 } // namespace mixxx::xdjsync
