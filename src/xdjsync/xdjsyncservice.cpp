@@ -12,6 +12,7 @@
 #include "util/time.h"
 #include "xdjsync/enginephase.h"
 #include "xdjsync/peertable.h"
+#include "xdjsync/tempofollow.h"
 
 namespace mixxx::xdjsync {
 
@@ -146,7 +147,16 @@ class XdjSyncWorker : public QObject {
         });
 
         m_peers.expire(now);
-        updateControls(m_peers.reference(local, syncMode(), now));
+        const auto reference = m_peers.reference(local, syncMode(), now);
+        // Setting bpm makes Mixxx adjust the rate (on the main thread), as if
+        // the BPM were typed in. Overrides the pitch fader while following.
+        const auto targetBpm = followTempo(syncMode(),
+                m_bpm.get(),
+                reference ? std::optional(reference->bpm) : std::nullopt);
+        if (targetBpm) {
+            m_bpm.set(*targetBpm);
+        }
+        updateControls(reference);
     }
 
     void updateControls(const std::optional<ReferenceStatus>& reference) {
@@ -201,7 +211,9 @@ class XdjSyncWorker : public QObject {
 
 XdjSyncService::XdjSyncService(UserSettingsPointer pConfig) {
     m_controls.pEnabled = makeReadOnly("enabled");
-    m_controls.pSyncMode = std::make_unique<ControlObject>(key("sync_mode"));
+    // Persistent: a player restarts in the mode it was left in.
+    m_controls.pSyncMode = std::make_unique<ControlObject>(
+            key("sync_mode"), true, false, true);
     m_controls.pPeerCount = makeReadOnly("peer_count");
     m_controls.pRefPresent = makeReadOnly("ref_present");
     m_controls.pRefOffsetValid = makeReadOnly("ref_offset_valid");
