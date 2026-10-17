@@ -50,7 +50,8 @@ double projectPhase(const PhaseSample& sample, Duration now);
 std::optional<BeatOffset> beatOffset(
         const PhaseSample& local, const PhaseSample& reference, Duration now);
 
-/// Within kInSyncMs and not drifting apart.
-bool inSync(const BeatOffset& offset);
+/// Within kInSyncMs and not drifting apart. `ignoreDrift` when the tempo
+/// difference is a deliberate phase trim (BEAT mode).
+bool inSync(const BeatOffset& offset, bool ignoreDrift = false);
 
 } // namespace mixxx::xdjsync

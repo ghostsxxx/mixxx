@@ -12,7 +12,7 @@
 #include "util/time.h"
 #include "xdjsync/enginephase.h"
 #include "xdjsync/peertable.h"
-#include "xdjsync/tempofollow.h"
+#include "xdjsync/phasefollower.h"
 
 namespace mixxx::xdjsync {
 
@@ -62,7 +62,8 @@ class XdjSyncWorker : public QObject {
               m_peers(m_playerId),
               m_play(ConfigKey(kDeckGroup, QStringLiteral("play"))),
               m_bpm(ConfigKey(kDeckGroup, QStringLiteral("bpm"))),
-              m_beatDistance(ConfigKey(kDeckGroup, QStringLiteral("beat_distance"))) {
+              m_beatDistance(ConfigKey(kDeckGroup, QStringLiteral("beat_distance"))),
+              m_beatJump(ConfigKey(kDeckGroup, QStringLiteral("beatjump"))) {
     }
 
     /// Runs on the worker thread.
@@ -148,13 +149,16 @@ class XdjSyncWorker : public QObject {
 
         m_peers.expire(now);
         const auto reference = m_peers.reference(local, syncMode(), now);
+        const SyncAction action =
+                m_follower.update(syncMode(), local.playing, m_bpm.get(), reference, now);
         // Setting bpm makes Mixxx adjust the rate (on the main thread), as if
         // the BPM were typed in. Overrides the pitch fader while following.
-        const auto targetBpm = followTempo(syncMode(),
-                m_bpm.get(),
-                reference ? std::optional(reference->bpm) : std::nullopt);
-        if (targetBpm) {
-            m_bpm.set(*targetBpm);
+        if (action.targetBpm) {
+            m_bpm.set(*action.targetBpm);
+        }
+        // Fractional beat jump; like a controller script setting it.
+        if (action.beatJump) {
+            m_beatJump.set(*action.beatJump);
         }
         updateControls(reference);
     }
@@ -171,7 +175,11 @@ class XdjSyncWorker : public QObject {
         c.pRefOffsetValid->forceSet(valid ? 1.0 : 0.0);
         c.pRefOffsetMs->forceSet(valid ? reference->offset->offsetMs : 0.0);
         c.pRefPhase->forceSet(valid ? 0.5 + reference->offset->offsetBeats : 0.5);
-        c.pRefInSync->forceSet(valid && inSync(*reference->offset) ? 1.0 : 0.0);
+        // In BEAT mode the tempo difference is a deliberate phase trim.
+        c.pRefInSync->forceSet(
+                valid && inSync(*reference->offset, syncMode() == PlayerSyncMode::Beat)
+                        ? 1.0
+                        : 0.0);
         c.pRefBpmDelta->forceSet(valid ? reference->offset->bpmDelta : 0.0);
         c.pRefDrifting->forceSet(valid && reference->offset->drifting ? 1.0 : 0.0);
 
@@ -202,6 +210,8 @@ class XdjSyncWorker : public QObject {
     PollingControlProxy m_play;
     PollingControlProxy m_bpm;
     PollingControlProxy m_beatDistance;
+    PollingControlProxy m_beatJump;
+    PhaseFollower m_follower;
     QUdpSocket* m_pSocket = nullptr;
     quint32 m_stateSeq = 0;
     quint32 m_pingSeq = 0;

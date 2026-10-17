@@ -41,8 +41,8 @@ std::optional<BeatOffset> beatOffset(
     };
 }
 
-bool inSync(const BeatOffset& offset) {
-    return !offset.drifting && std::abs(offset.offsetMs) <= kInSyncMs;
+bool inSync(const BeatOffset& offset, bool ignoreDrift) {
+    return (ignoreDrift || !offset.drifting) && std::abs(offset.offsetMs) <= kInSyncMs;
 }
 
 } // namespace mixxx::xdjsync

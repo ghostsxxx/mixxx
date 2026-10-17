@@ -1771,6 +1771,7 @@ add_library(
   src/xdjsync/enginephase.cpp
   src/xdjsync/packet.cpp
   src/xdjsync/peertable.cpp
+  src/xdjsync/phasefollower.cpp
   src/xdjsync/tempofollow.cpp
   src/xdjsync/xdjsyncservice.cpp
 )
@@ -2825,6 +2826,7 @@ if(BUILD_TESTING)
     src/test/xdjsyncenginephasetest.cpp
     src/test/xdjsyncpackettest.cpp
     src/test/xdjsyncpeertabletest.cpp
+    src/test/xdjsyncphasefollowertest.cpp
     src/test/xdjsynctempofollowtest.cpp
     src/util/moc_included_test.cpp
     src/test/helpers/log_test.cpp

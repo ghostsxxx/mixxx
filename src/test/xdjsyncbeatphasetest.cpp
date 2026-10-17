@@ -142,6 +142,9 @@ TEST(XdjSyncBeatPhaseTest, InSyncWithinThreshold) {
     EXPECT_FALSE(inSync(offsetAt(-(kInSyncMs + 0.1))));
     // Aligned right now, but drifting apart: not in sync.
     EXPECT_FALSE(inSync(offsetAt(0.0, 121.0)));
+    // Unless the tempo difference is a deliberate phase trim (BEAT mode).
+    EXPECT_TRUE(inSync(offsetAt(0.0, 121.0), true));
+    EXPECT_FALSE(inSync(offsetAt(kInSyncMs + 0.1, 121.0), true));
 }
 
 TEST(XdjSyncBeatPhaseTest, NoOffsetWithoutValidBpm) {

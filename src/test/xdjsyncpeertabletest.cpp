@@ -122,6 +122,7 @@ TEST(XdjSyncPeerTableTest, OffsetUsesPeerClock) {
     const auto ref = table.reference(localPlaying(120.0, 0.1, ms(0)), PlayerSyncMode::Free, ms(700));
     ASSERT_TRUE(ref.has_value());
     EXPECT_EQ(QStringLiteral("p2"), ref->playerId);
+    EXPECT_TRUE(ref->playing);
     EXPECT_DOUBLE_EQ(120.0, ref->bpm);
     ASSERT_TRUE(ref->clock.has_value());
     EXPECT_EQ(ms(5000), ref->clock->offset);

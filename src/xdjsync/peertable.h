@@ -14,6 +14,7 @@ namespace mixxx::xdjsync {
 /// What this player shows about its reference player.
 struct ReferenceStatus {
     QString playerId;
+    bool playing;
     /// Reference tempo including pitch.
     double bpm;
     /// Empty until the clock is aligned with the reference.

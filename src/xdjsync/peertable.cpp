@@ -96,7 +96,8 @@ std::optional<ReferenceStatus> PeerTable::reference(
     }
     const Peer& peer = *m_peers.constFind(*playerId);
     const StatePacket& state = *peer.state;
-    ReferenceStatus status{*playerId, state.bpm, peer.clock.estimate(), std::nullopt};
+    ReferenceStatus status{
+            *playerId, state.playing, state.bpm, peer.clock.estimate(), std::nullopt};
     if (status.clock) {
         const PhaseSample referencePhase{
                 state.playing,
