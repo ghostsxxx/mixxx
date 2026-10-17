@@ -246,6 +246,7 @@ class XdjSyncWorker : public QObject {
         // Fractional beat jump; like a controller script setting it.
         if (action.beatJump) {
             m_beatJump.set(*action.beatJump);
+            kLogger.info() << "sync beat jump" << *action.beatJump << "beats";
         }
         updateControls(reference);
     }
