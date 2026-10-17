@@ -13,7 +13,11 @@ constexpr double kEpsilonBeats = 1e-6;
 
 CueCountdown CueCountdown::fromBeats(double remainingBeats) {
     const int wholeBeats = static_cast<int>(std::ceil(remainingBeats - kEpsilonBeats));
-    return CueCountdown{remainingBeats, wholeBeats / 4, wholeBeats % 4};
+    if (wholeBeats <= 0) {
+        return CueCountdown{remainingBeats, 0, 0};
+    }
+    // CDJ-style: beats count 4, 3, 2, 1 within each bar (64 beats = 15.4).
+    return CueCountdown{remainingBeats, (wholeBeats - 1) / 4, (wholeBeats - 1) % 4 + 1};
 }
 
 std::optional<CueCountdown> nextCueCountdown(

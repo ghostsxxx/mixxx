@@ -12,8 +12,9 @@ TEST(XdjSyncCountdownTest, CountsToNextCueAhead) {
     const auto countdown = nextCueCountdown(10.25, {4.0, 200.0, 74.25});
     ASSERT_TRUE(countdown.has_value());
     EXPECT_DOUBLE_EQ(64.0, countdown->beats);
-    EXPECT_EQ(16, countdown->bars);
-    EXPECT_EQ(0, countdown->beat);
+    // 64 beats = 16 bars, counted CDJ-style: bar 15, beat 4 (of 4..1).
+    EXPECT_EQ(15, countdown->bars);
+    EXPECT_EQ(4, countdown->beat);
 }
 
 TEST(XdjSyncCountdownTest, BarsAndBeatsRoundUpToWholeBeats) {
@@ -42,6 +43,11 @@ TEST(XdjSyncCountdownTest, FromRemainingBeats) {
     EXPECT_EQ(1, countdown.beat);
     EXPECT_EQ(0, CueCountdown::fromBeats(0.2).bars);
     EXPECT_EQ(1, CueCountdown::fromBeats(0.2).beat);
+    // Beats count 4, 3, 2, 1 within each bar, never 0.
+    EXPECT_EQ(0, CueCountdown::fromBeats(4.0).bars);
+    EXPECT_EQ(4, CueCountdown::fromBeats(4.0).beat);
+    EXPECT_EQ(1, CueCountdown::fromBeats(8.0).bars);
+    EXPECT_EQ(4, CueCountdown::fromBeats(8.0).beat);
 }
 
 } // namespace

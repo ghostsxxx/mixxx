@@ -99,7 +99,9 @@ TEST(XdjSyncLaneGeometryTest, BeatsToNextCue) {
 
 TEST(XdjSyncLaneGeometryTest, CountdownText) {
     // Fixed width: bars padded to two digits, CDJ-style.
-    EXPECT_EQ(QStringLiteral("16.0"), formatCountdown(64.0));
+    EXPECT_EQ(QStringLiteral("15.4"), formatCountdown(64.0));
+    EXPECT_EQ(QStringLiteral("01.4"), formatCountdown(8.0));
+    EXPECT_EQ(QStringLiteral("00.4"), formatCountdown(4.0));
     EXPECT_EQ(QStringLiteral("15.2"), formatCountdown(61.5));
     EXPECT_EQ(QStringLiteral("01.1"), formatCountdown(5.0));
     EXPECT_EQ(QStringLiteral("00.1"), formatCountdown(0.2));
