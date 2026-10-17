@@ -1771,10 +1771,12 @@ add_library(
   src/xdjsync/countdown.cpp
   src/xdjsync/enginephase.cpp
   src/xdjsync/gridposition.cpp
+  src/xdjsync/lanegeometry.cpp
   src/xdjsync/packet.cpp
   src/xdjsync/peertable.cpp
   src/xdjsync/phasefollower.cpp
   src/xdjsync/tempofollow.cpp
+  src/xdjsync/wxdjbeatlanes.cpp
   src/xdjsync/xdjsyncservice.cpp
 )
 set(MIXXX_COMMON_PRECOMPILED_HEADER src/util/assert.h)
@@ -2824,10 +2826,12 @@ if(BUILD_TESTING)
     src/test/wpushbutton_test.cpp
     src/test/wwidgetstack_test.cpp
     src/test/xdjsyncbeatphasetest.cpp
+    src/test/xdjsyncbeatlanestest.cpp
     src/test/xdjsyncclocktest.cpp
     src/test/xdjsynccountdowntest.cpp
     src/test/xdjsyncenginephasetest.cpp
     src/test/xdjsyncgridpositiontest.cpp
+    src/test/xdjsynclanegeometrytest.cpp
     src/test/xdjsyncpackettest.cpp
     src/test/xdjsyncpeertabletest.cpp
     src/test/xdjsyncphasefollowertest.cpp

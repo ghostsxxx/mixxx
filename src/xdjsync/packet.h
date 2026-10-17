@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QByteArray>
+#include <QList>
 #include <QString>
 #include <optional>
 #include <variant>
@@ -16,12 +17,22 @@ namespace mixxx::xdjsync {
 /// without a version bump; anything else incompatible needs a new version.
 constexpr quint8 kProtocolVersion = 1;
 constexpr int kMaxPlayerIdBytes = 32;
+/// Upcoming hot cues per state packet.
+constexpr int kMaxUpcomingCues = 8;
 
 enum class PlayerSyncMode : quint8 {
     Free = 0,
     Bpm = 1,
     Beat = 2,
     Master = 3,
+};
+
+/// A hot cue near the play position, for the beat lanes.
+struct UpcomingCue {
+    /// Mixxx hot cue index, 0-based.
+    quint8 number;
+    /// Beats from the play position at atDac; negative = just passed.
+    double beatsAhead;
 };
 
 /// Broadcast periodically by every player.
@@ -46,6 +57,9 @@ struct StatePacket {
     /// Beats from atDac to the next cue; empty if none. Optional on the wire
     /// (appended).
     std::optional<double> cueCountdownBeats{};
+    /// Hot cues from a little behind to ahead of the play position, at most
+    /// kMaxUpcomingCues. Optional on the wire (appended).
+    QList<UpcomingCue> upcomingCues{};
 };
 
 /// Clock alignment request, unicast to one peer.

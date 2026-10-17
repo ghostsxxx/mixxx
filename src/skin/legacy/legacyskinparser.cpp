@@ -35,6 +35,7 @@
 #include "widget/controlwidgetconnection.h"
 #include "widget/wbasewidget.h"
 #include "widget/wbattery.h"
+#include "xdjsync/wxdjbeatlanes.h"
 #include "widget/wbeatspinbox.h"
 #include "widget/wcombobox.h"
 #include "widget/wcoverart.h"
@@ -637,6 +638,8 @@ QList<QWidget*> LegacySkinParser::parseNode(const QDomElement& node) {
         result = wrapWidget(parseEngineKey(node));
     } else if (nodeName == "Battery") {
         result = wrapWidget(parseBattery(node));
+    } else if (nodeName == "XdjBeatLanes") {
+        result = wrapWidget(parseXdjBeatLanes(node));
     } else if (nodeName == "SetVariable") {
         m_pContext->updateVariable(node);
     } else if (nodeName == "Scrollable") {
@@ -1364,6 +1367,15 @@ QWidget* LegacySkinParser::parseBattery(const QDomElement& node) {
     setupConnections(node, p);
     p->installEventFilter(m_pKeyboard);
     p->installEventFilter(m_pControllerManager->getControllerLearningEventFilter());
+    return p;
+}
+
+QWidget* LegacySkinParser::parseXdjBeatLanes(const QDomElement& node) {
+    auto* p = new mixxx::xdjsync::WXdjBeatLanes(m_pParent);
+    setupBaseWidget(node, p);
+    setupWidget(node, p);
+    p->setup(node, *m_pContext);
+    setupConnections(node, p);
     return p;
 }
 

@@ -7,6 +7,7 @@
 #include "util/duration.h"
 #include "xdjsync/beatphase.h"
 #include "xdjsync/clockestimator.h"
+#include "xdjsync/lanegeometry.h"
 #include "xdjsync/packet.h"
 
 namespace mixxx::xdjsync {
@@ -26,6 +27,9 @@ struct ReferenceStatus {
     std::optional<double> barPosition{};
     /// Reference's beats to its next cue, now; empty if none or unknown.
     std::optional<double> cueCountdownBeats{};
+    /// For the beat lanes, on the local clock; empty without clock alignment
+    /// or bar position.
+    std::optional<LaneState> lane{};
 };
 
 /// Known players on the network, without any I/O. All times are on the

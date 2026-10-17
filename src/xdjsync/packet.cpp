@@ -77,6 +77,11 @@ void writePayload(QDataStream* pStream, const StatePacket& state) {
     writeTime(pStream, state.atDac);
     writeTime(pStream, state.playingFor);
     *pStream << state.cueCountdownBeats.value_or(kNoCueCountdown);
+    // Written as given; the receiver rejects more than kMaxUpcomingCues.
+    *pStream << static_cast<quint8>(std::min<qsizetype>(state.upcomingCues.size(), 255));
+    for (const UpcomingCue& cue : state.upcomingCues.mid(0, 255)) {
+        *pStream << cue.number << cue.beatsAhead;
+    }
 }
 
 void writePayload(QDataStream* pStream, const PingPacket& ping) {
@@ -123,6 +128,21 @@ std::optional<Packet> readState(QDataStream* pStream) {
         }
         if (cueCountdownBeats >= 0.0) {
             state.cueCountdownBeats = cueCountdownBeats;
+        }
+    }
+    if (!pStream->atEnd()) {
+        quint8 count = 0;
+        *pStream >> count;
+        if (count > kMaxUpcomingCues) {
+            return std::nullopt;
+        }
+        for (int i = 0; i < count; ++i) {
+            UpcomingCue cue{0, 0.0};
+            *pStream >> cue.number >> cue.beatsAhead;
+            if (!util_isfinite(cue.beatsAhead)) {
+                return std::nullopt;
+            }
+            state.upcomingCues.append(cue);
         }
     }
     if (pStream->status() != QDataStream::Ok) {

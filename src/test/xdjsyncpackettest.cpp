@@ -52,10 +52,54 @@ TEST(XdjSyncPacketTest, StateWithoutGridOrCue) {
     EXPECT_FALSE(std::get<StatePacket>(*decoded).cueCountdownBeats.has_value());
 }
 
+// Appended (optional) tail of makeState(): playingFor (8), cue countdown (8),
+// upcoming cue count (1, no cues).
+constexpr int kUpcomingCuesTail = 1;
+constexpr int kCountdownTail = 8 + kUpcomingCuesTail;
+constexpr int kOptionalTail = 8 + kCountdownTail;
+
+TEST(XdjSyncPacketTest, UpcomingCuesRoundTrip) {
+    auto state = makeState();
+    state.upcomingCues = {UpcomingCue{0, -3.5}, UpcomingCue{4, 60.25}};
+    const auto decoded = decodePacket(encodePacket(state));
+    ASSERT_TRUE(decoded.has_value());
+    const auto& cues = std::get<StatePacket>(*decoded).upcomingCues;
+    ASSERT_EQ(2, cues.size());
+    EXPECT_EQ(0, cues[0].number);
+    EXPECT_DOUBLE_EQ(-3.5, cues[0].beatsAhead);
+    EXPECT_EQ(4, cues[1].number);
+    EXPECT_DOUBLE_EQ(60.25, cues[1].beatsAhead);
+}
+
+TEST(XdjSyncPacketTest, StateWithoutUpcomingCuesDecodesAsEmpty) {
+    QByteArray bytes = encodePacket(makeState());
+    bytes.chop(kUpcomingCuesTail);
+    const auto decoded = decodePacket(bytes);
+    ASSERT_TRUE(decoded.has_value());
+    EXPECT_TRUE(std::get<StatePacket>(*decoded).upcomingCues.isEmpty());
+    EXPECT_TRUE(std::get<StatePacket>(*decoded).cueCountdownBeats.has_value());
+}
+
+TEST(XdjSyncPacketTest, RejectsTruncatedUpcomingCues) {
+    auto state = makeState();
+    state.upcomingCues = {UpcomingCue{0, 1.0}, UpcomingCue{1, 2.0}};
+    QByteArray bytes = encodePacket(state);
+    bytes.chop(4);
+    EXPECT_FALSE(decodePacket(bytes).has_value());
+}
+
+TEST(XdjSyncPacketTest, RejectsTooManyUpcomingCues) {
+    auto state = makeState();
+    for (int i = 0; i <= kMaxUpcomingCues; ++i) {
+        state.upcomingCues.append(UpcomingCue{static_cast<quint8>(i), 1.0 * i});
+    }
+    EXPECT_FALSE(decodePacket(encodePacket(state)).has_value());
+}
+
 TEST(XdjSyncPacketTest, StateWithoutCueCountdownDecodesAsNone) {
     // Packets from before cueCountdownBeats was appended.
     QByteArray bytes = encodePacket(makeState());
-    bytes.chop(8);
+    bytes.chop(kCountdownTail);
     const auto decoded = decodePacket(bytes);
     ASSERT_TRUE(decoded.has_value());
     EXPECT_EQ(Duration::fromMillis(95000), std::get<StatePacket>(*decoded).playingFor);
@@ -65,7 +109,7 @@ TEST(XdjSyncPacketTest, StateWithoutCueCountdownDecodesAsNone) {
 TEST(XdjSyncPacketTest, StateWithoutPlayingForDecodesAsZero) {
     // Packets from before playingFor was appended (8 bytes at the end).
     QByteArray bytes = encodePacket(makeState());
-    bytes.chop(16);
+    bytes.chop(kOptionalTail);
     const auto decoded = decodePacket(bytes);
     ASSERT_TRUE(decoded.has_value());
     EXPECT_EQ(Duration(), std::get<StatePacket>(*decoded).playingFor);
@@ -133,7 +177,7 @@ TEST(XdjSyncPacketTest, RejectsUnknownType) {
 
 TEST(XdjSyncPacketTest, RejectsEveryTruncation) {
     // Up to the last mandatory field; the appended fields are optional.
-    const QByteArray bytes = encodePacket(makeState()).chopped(16);
+    const QByteArray bytes = encodePacket(makeState()).chopped(kOptionalTail);
     for (int size = 0; size < bytes.size(); ++size) {
         EXPECT_FALSE(decodePacket(bytes.left(size)).has_value()) << "size " << size;
     }

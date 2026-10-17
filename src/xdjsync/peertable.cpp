@@ -119,6 +119,17 @@ std::optional<ReferenceStatus> PeerTable::reference(
         };
         status.offset = beatOffset(local, referencePhase, now);
         status.barPosition = barPosition(referencePhase, now);
+        if (state.beatIndexValid && state.bpm > 0.0) {
+            LaneState lane;
+            lane.playing = state.playing;
+            lane.bpm = state.bpm;
+            lane.beatPosition = static_cast<double>(state.beatIndex) + state.beatDistance;
+            lane.at = referencePhase.atDac;
+            for (const UpcomingCue& cue : state.upcomingCues) {
+                lane.cues.append(LaneCue{lane.beatPosition + cue.beatsAhead, cue.number});
+            }
+            status.lane = lane;
+        }
         if (state.cueCountdownBeats) {
             // The countdown runs down with the reference's play position.
             const double beatsSinceSample =

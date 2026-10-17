@@ -16,6 +16,7 @@
 #include "xdjsync/countdown.h"
 #include "xdjsync/enginephase.h"
 #include "xdjsync/gridposition.h"
+#include "xdjsync/lanegeometry.h"
 #include "xdjsync/peertable.h"
 #include "xdjsync/phasefollower.h"
 
@@ -144,6 +145,8 @@ class XdjSyncWorker : public QObject {
     struct DeckGrid {
         std::optional<qint64> beatIndex;
         std::optional<double> cueCountdownBeats;
+        /// Hot cues in beats from the first downbeat.
+        QList<LaneCue> cues;
     };
 
     DeckGrid deckGrid(double trackFrame, double beatDistance) const {
@@ -158,6 +161,7 @@ class XdjSyncWorker : public QObject {
         }
         const double position = beatPosition(*pBeats, audio::FramePos(trackFrame));
         QList<double> cueBeats;
+        QList<LaneCue> laneCues;
         const QList<CuePointer> cues = pTrack->getCuePoints();
         for (const CuePointer& pCue : cues) {
             const auto type = pCue->getType();
@@ -165,14 +169,17 @@ class XdjSyncWorker : public QObject {
             // Hot cues only: Mixxx's main cue, intro/outro and sound markers
             // usually sit at the track start and would only add noise.
             if (type == CueType::HotCue && cuePosition.isValid()) {
-                cueBeats.append(beatPosition(*pBeats, cuePosition));
+                const double cueBeat = beatPosition(*pBeats, cuePosition);
+                cueBeats.append(cueBeat);
+                laneCues.append(LaneCue{cueBeat, pCue->getHotCue()});
             }
         }
         const auto countdown = nextCueCountdown(position, cueBeats);
         // The engine's beat_distance is authoritative within the beat; the
         // grid position only decides which beat it is.
         return DeckGrid{std::llround(position - beatDistance),
-                countdown ? std::optional(countdown->beats) : std::nullopt};
+                countdown ? std::optional(countdown->beats) : std::nullopt,
+                laneCues};
     }
 
     void tick() {
@@ -193,6 +200,14 @@ class XdjSyncWorker : public QObject {
                 : m_playPosition.get() * m_trackSamples.get() / 2.0;
         const DeckGrid grid = deckGrid(trackFrame, local.beatDistance);
         local.beatIndex = grid.beatIndex;
+        std::optional<LaneState> ownLane;
+        if (local.beatIndex && local.bpm > 0.0) {
+            ownLane = LaneState{local.playing,
+                    local.bpm,
+                    static_cast<double>(*local.beatIndex) + local.beatDistance,
+                    local.atDac,
+                    grid.cues};
+        }
         const Duration localPlayingFor = playingFor(local.playing, now);
         send(StatePacket{
                 m_playerId,
@@ -206,6 +221,8 @@ class XdjSyncWorker : public QObject {
                 localPlayingFor,
                 local.beatIndex.has_value(),
                 grid.cueCountdownBeats,
+                ownLane ? upcomingCues(ownLane->cues, ownLane->beatPosition)
+                        : QList<UpcomingCue>(),
         });
         updateOwnControls(local, grid, now);
 
@@ -214,6 +231,11 @@ class XdjSyncWorker : public QObject {
         m_pControls->pMaster->forceSet(master == m_playerId ? 1.0 : 0.0);
         // The master follows nobody (reference() is empty for it).
         const auto reference = m_peers.reference(local, localPlayingFor, now);
+        publishLanes(LanesSnapshot{
+                ownLane,
+                reference ? reference->lane : std::nullopt,
+                master == m_playerId,
+        });
         const SyncAction action =
                 m_follower.update(syncMode(), local.playing, m_bpm.get(), reference, now);
         // Setting bpm makes Mixxx adjust the rate (on the main thread), as if
