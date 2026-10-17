@@ -1,5 +1,8 @@
 #include "xdjsync/peertable.h"
 
+#include <QList>
+#include <algorithm>
+
 namespace mixxx::xdjsync {
 
 PeerTable::PeerTable(QString ownPlayerId)
@@ -9,7 +12,9 @@ PeerTable::PeerTable(QString ownPlayerId)
 std::optional<PongPacket> PeerTable::handlePacket(const Packet& packet, Duration receivedAt) {
     if (const auto* pState = std::get_if<StatePacket>(&packet)) {
         if (pState->playerId != m_ownPlayerId) {
-            touch(pState->playerId, receivedAt).state = *pState;
+            Peer& peer = touch(pState->playerId, receivedAt);
+            peer.state = *pState;
+            peer.stateReceivedAt = receivedAt;
         }
         return std::nullopt;
     }
@@ -62,36 +67,42 @@ int PeerTable::peerCount() const {
     return count;
 }
 
-std::optional<QString> PeerTable::referencePlayerId(PlayerSyncMode ownMode) const {
-    if (ownMode == PlayerSyncMode::Master) {
+std::optional<QString> PeerTable::masterPlayerId(
+        const PhaseSample& local, Duration localPlayingFor, Duration now) const {
+    struct Candidate {
+        QString playerId;
+        Duration startedAt; // local clock
+    };
+    QList<Candidate> candidates;
+    if (local.playing && local.bpm > 0.0) {
+        candidates.append({m_ownPlayerId, now - localPlayingFor});
+    }
+    for (auto it = m_peers.cbegin(); it != m_peers.cend(); ++it) {
+        if (it->state && it->state->playing && it->state->bpm > 0.0) {
+            candidates.append({it.key(), it->stateReceivedAt - it->state->playingFor});
+        }
+    }
+    if (candidates.isEmpty()) {
         return std::nullopt;
     }
-    // QMap iterates sorted by id, so the choice is deterministic on all
-    // players if two peers claim master at the same time.
-    std::optional<QString> onlyPlaying;
-    int playingCount = 0;
-    for (auto it = m_peers.cbegin(); it != m_peers.cend(); ++it) {
-        if (!it->state) {
-            continue;
-        }
-        if (it->state->syncMode == PlayerSyncMode::Master) {
-            return it.key();
-        }
-        if (it->state->playing) {
-            ++playingCount;
-            onlyPlaying = it.key();
+    Duration earliest = candidates.first().startedAt;
+    for (const Candidate& candidate : std::as_const(candidates)) {
+        earliest = std::min(earliest, candidate.startedAt);
+    }
+    std::optional<QString> master;
+    for (const Candidate& candidate : std::as_const(candidates)) {
+        if (candidate.startedAt < earliest + kMasterTieWindow &&
+                (!master || candidate.playerId < *master)) {
+            master = candidate.playerId;
         }
     }
-    if (playingCount == 1) {
-        return onlyPlaying;
-    }
-    return std::nullopt;
+    return master;
 }
 
 std::optional<ReferenceStatus> PeerTable::reference(
-        const PhaseSample& local, PlayerSyncMode ownMode, Duration now) const {
-    const auto playerId = referencePlayerId(ownMode);
-    if (!playerId) {
+        const PhaseSample& local, Duration localPlayingFor, Duration now) const {
+    const auto playerId = masterPlayerId(local, localPlayingFor, now);
+    if (!playerId || *playerId == m_ownPlayerId) {
         return std::nullopt;
     }
     const Peer& peer = *m_peers.constFind(*playerId);

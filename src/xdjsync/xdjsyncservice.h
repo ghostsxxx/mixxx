@@ -29,6 +29,7 @@ class EngineDeckPhaseSource;
 ///   PlayerId         default: host name
 ///   Port             default 51760
 ///   BroadcastAddress default 255.255.255.255
+///   SyncType         beat (tempo + phase, default) or bpm (tempo only)
 class XdjSyncService : public QObject {
     Q_OBJECT
   public:
@@ -41,7 +42,10 @@ class XdjSyncService : public QObject {
     /// thread-safe; the objects themselves stay owned by the main thread.
     struct Controls {
         std::unique_ptr<ControlObject> pEnabled;
-        std::unique_ptr<ControlObject> pSyncMode;
+        /// SYNC on/off (toggle, persistent).
+        std::unique_ptr<ControlObject> pSync;
+        /// This player is the automatic master (read-only, D18).
+        std::unique_ptr<ControlObject> pMaster;
         std::unique_ptr<ControlObject> pPeerCount;
         std::unique_ptr<ControlObject> pRefPresent;
         std::unique_ptr<ControlObject> pRefOffsetValid;

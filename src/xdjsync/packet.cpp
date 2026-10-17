@@ -71,6 +71,7 @@ void writePayload(QDataStream* pStream, const StatePacket& state) {
              << state.beatDistance
              << state.beatIndex;
     writeTime(pStream, state.atDac);
+    writeTime(pStream, state.playingFor);
 }
 
 void writePayload(QDataStream* pStream, const PingPacket& ping) {
@@ -104,6 +105,13 @@ std::optional<Packet> readState(QDataStream* pStream) {
     state.atDac = readTime(pStream);
     if (pStream->status() != QDataStream::Ok) {
         return std::nullopt;
+    }
+    // Appended field, absent in older packets.
+    if (!pStream->atEnd()) {
+        state.playingFor = readTime(pStream);
+        if (pStream->status() != QDataStream::Ok) {
+            return std::nullopt;
+        }
     }
     if (syncMode > static_cast<quint8>(PlayerSyncMode::Master)) {
         return std::nullopt;

@@ -17,6 +17,7 @@ StatePacket makeState() {
             0.4375,
             -3,
             Duration::fromNanos(123456789012345),
+            Duration::fromMillis(95000),
     };
 }
 
@@ -34,6 +35,16 @@ TEST(XdjSyncPacketTest, StateRoundTrip) {
     EXPECT_EQ(state.beatDistance, pState->beatDistance);
     EXPECT_EQ(state.beatIndex, pState->beatIndex);
     EXPECT_EQ(state.atDac, pState->atDac);
+    EXPECT_EQ(state.playingFor, pState->playingFor);
+}
+
+TEST(XdjSyncPacketTest, StateWithoutPlayingForDecodesAsZero) {
+    // Packets from before playingFor was appended (8 bytes at the end).
+    QByteArray bytes = encodePacket(makeState());
+    bytes.chop(8);
+    const auto decoded = decodePacket(bytes);
+    ASSERT_TRUE(decoded.has_value());
+    EXPECT_EQ(Duration(), std::get<StatePacket>(*decoded).playingFor);
 }
 
 TEST(XdjSyncPacketTest, PingRoundTrip) {
@@ -97,7 +108,8 @@ TEST(XdjSyncPacketTest, RejectsUnknownType) {
 }
 
 TEST(XdjSyncPacketTest, RejectsEveryTruncation) {
-    const QByteArray bytes = encodePacket(makeState());
+    // Up to the last mandatory field; playingFor is optional (see above).
+    const QByteArray bytes = encodePacket(makeState()).chopped(8);
     for (int size = 0; size < bytes.size(); ++size) {
         EXPECT_FALSE(decodePacket(bytes.left(size)).has_value()) << "size " << size;
     }
@@ -108,6 +120,12 @@ TEST(XdjSyncPacketTest, IgnoresTrailingBytes) {
     QByteArray bytes = encodePacket(makeState());
     bytes.append("extra");
     EXPECT_TRUE(decodePacket(bytes).has_value());
+}
+
+TEST(XdjSyncPacketTest, RejectsTruncatedPlayingFor) {
+    QByteArray bytes = encodePacket(makeState());
+    bytes.chop(3);
+    EXPECT_FALSE(decodePacket(bytes).has_value());
 }
 
 // Layout: magic(4) version(1) type(1) idLen(1) id(7) seq(4) flags(1) mode(1)

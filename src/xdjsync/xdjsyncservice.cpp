@@ -39,14 +39,6 @@ std::unique_ptr<ControlObject> makeReadOnly(const char* item) {
     return pControl;
 }
 
-PlayerSyncMode toSyncMode(double value) {
-    const int mode = static_cast<int>(value);
-    if (mode < 0 || mode > static_cast<int>(PlayerSyncMode::Master)) {
-        return PlayerSyncMode::Free;
-    }
-    return static_cast<PlayerSyncMode>(mode);
-}
-
 } // namespace
 
 /// Lives on XdjSyncService's thread. Not a Q_OBJECT: only lambdas connect.
@@ -55,9 +47,11 @@ class XdjSyncWorker : public QObject {
     XdjSyncWorker(XdjSyncService::Controls* pControls,
             QString playerId,
             QHostAddress broadcastAddress,
-            quint16 port)
+            quint16 port,
+            PlayerSyncMode syncType)
             : m_pControls(pControls),
               m_playerId(std::move(playerId)),
+              m_syncType(syncType),
               m_broadcastAddress(std::move(broadcastAddress)),
               m_port(port),
               m_peers(m_playerId),
@@ -121,8 +115,20 @@ class XdjSyncWorker : public QObject {
         send(PingPacket{m_playerId, m_pingSeq++, Time::elapsed()});
     }
 
+    /// Free with SYNC off, else the configured sync type.
     PlayerSyncMode syncMode() const {
-        return toSyncMode(m_pControls->pSyncMode->get());
+        return m_pControls->pSync->toBool() ? m_syncType : PlayerSyncMode::Free;
+    }
+
+    Duration playingFor(bool playing, Duration now) {
+        if (!playing) {
+            m_playingSince.reset();
+            return Duration();
+        }
+        if (!m_playingSince) {
+            m_playingSince = now;
+        }
+        return now - *m_playingSince;
     }
 
     void tick() {
@@ -137,6 +143,7 @@ class XdjSyncWorker : public QObject {
                 m_beatDistance.get(),
                 now,
         });
+        const Duration localPlayingFor = playingFor(local.playing, now);
         send(StatePacket{
                 m_playerId,
                 m_stateSeq++,
@@ -146,10 +153,14 @@ class XdjSyncWorker : public QObject {
                 local.beatDistance,
                 0, // beatIndex: not used before bar alignment
                 local.atDac,
+                localPlayingFor,
         });
 
         m_peers.expire(now);
-        const auto reference = m_peers.reference(local, syncMode(), now);
+        const auto master = m_peers.masterPlayerId(local, localPlayingFor, now);
+        m_pControls->pMaster->forceSet(master == m_playerId ? 1.0 : 0.0);
+        // The master follows nobody (reference() is empty for it).
+        const auto reference = m_peers.reference(local, localPlayingFor, now);
         const SyncAction action =
                 m_follower.update(syncMode(), local.playing, m_bpm.get(), reference, now);
         // Setting bpm makes Mixxx adjust the rate (on the main thread), as if
@@ -205,6 +216,8 @@ class XdjSyncWorker : public QObject {
 
     Controls* const m_pControls;
     const QString m_playerId;
+    const PlayerSyncMode m_syncType;
+    std::optional<Duration> m_playingSince;
     const QHostAddress m_broadcastAddress;
     const quint16 m_port;
     PeerTable m_peers;
@@ -222,13 +235,12 @@ class XdjSyncWorker : public QObject {
 
 XdjSyncService::XdjSyncService(UserSettingsPointer pConfig) {
     m_controls.pEnabled = makeReadOnly("enabled");
-    // Persistent: a player restarts in the mode it was left in. A 4-state
-    // toggle, so a skin button cycles through the modes (a plain control
-    // would act as a momentary push button).
-    auto pSyncMode = std::make_unique<ControlPushButton>(key("sync_mode"), true);
-    pSyncMode->setButtonMode(mixxx::control::ButtonMode::Toggle);
-    pSyncMode->setStates(static_cast<int>(PlayerSyncMode::Master) + 1);
-    m_controls.pSyncMode = std::move(pSyncMode);
+    // Persistent: a player restarts with SYNC as it was left. A toggle, so
+    // a skin button latches (a plain control would act as a push button).
+    auto pSync = std::make_unique<ControlPushButton>(key("sync"), true);
+    pSync->setButtonMode(mixxx::control::ButtonMode::Toggle);
+    m_controls.pSync = std::move(pSync);
+    m_controls.pMaster = makeReadOnly("master");
     m_controls.pPeerCount = makeReadOnly("peer_count");
     m_controls.pRefPresent = makeReadOnly("ref_present");
     m_controls.pRefOffsetValid = makeReadOnly("ref_offset_valid");
@@ -253,7 +265,12 @@ XdjSyncService::XdjSyncService(UserSettingsPointer pConfig) {
     const QHostAddress broadcastAddress(pConfig->getValue(
             key("BroadcastAddress"), QStringLiteral("255.255.255.255")));
 
-    m_pWorker = new XdjSyncWorker(&m_controls, playerId, broadcastAddress, port);
+    const PlayerSyncMode syncType =
+            pConfig->getValue(key("SyncType"), QStringLiteral("beat")) == QStringLiteral("bpm")
+            ? PlayerSyncMode::Bpm
+            : PlayerSyncMode::Beat;
+
+    m_pWorker = new XdjSyncWorker(&m_controls, playerId, broadcastAddress, port, syncType);
     m_pWorker->moveToThread(&m_thread);
     connect(&m_thread, &QThread::finished, m_pWorker, &QObject::deleteLater);
     m_thread.setObjectName(QStringLiteral("XdjSync"));

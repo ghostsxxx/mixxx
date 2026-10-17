@@ -16,8 +16,18 @@ StatePacket state(const QString& id,
         PlayerSyncMode mode = PlayerSyncMode::Free,
         double bpm = 174.0,
         double beatDistance = 0.0,
-        Duration atDac = ms(0)) {
-    return StatePacket{id, 1, playing, mode, bpm, beatDistance, 0, atDac};
+        Duration atDac = ms(0),
+        Duration playingFor = ms(0)) {
+    return StatePacket{id, 1, playing, mode, bpm, beatDistance, 0, atDac, playingFor};
+}
+
+/// A peer that has been playing for `playingFor` at 174 BPM.
+StatePacket playingPeer(const QString& id, Duration playingFor, double bpm = 174.0) {
+    return state(id, true, PlayerSyncMode::Free, bpm, 0.0, ms(0), playingFor);
+}
+
+PhaseSample localStopped() {
+    return PhaseSample{false, 174.0, 0.0, ms(0)};
 }
 
 PhaseSample localPlaying(double bpm, double beatDistance, Duration atDac) {
@@ -78,38 +88,82 @@ TEST(XdjSyncPeerTableTest, IgnoresPongsForOtherPlayers) {
         const PongPacket pong{QStringLiteral("p2"), QStringLiteral("p3"), 0, ms(0), ms(1), ms(1)};
         table.handlePacket(pong, ms(2));
     }
-    const auto ref = table.reference(localPlaying(174.0, 0.0, ms(10)), PlayerSyncMode::Free, ms(10));
+    const auto ref = table.reference(localStopped(), ms(0), ms(10));
     ASSERT_TRUE(ref.has_value());
     EXPECT_FALSE(ref->clock.has_value());
     EXPECT_FALSE(ref->offset.has_value());
 }
 
-TEST(XdjSyncPeerTableTest, MasterIsReference) {
+TEST(XdjSyncPeerTableTest, LongestPlayingIsMaster) {
     PeerTable table(QStringLiteral("me"));
-    table.handlePacket(state(QStringLiteral("p2"), true), ms(0));
-    table.handlePacket(state(QStringLiteral("p3"), false, PlayerSyncMode::Master), ms(0));
-    table.handlePacket(state(QStringLiteral("p4"), true), ms(0));
-    EXPECT_EQ(QStringLiteral("p3"), table.referencePlayerId(PlayerSyncMode::Free));
+    table.handlePacket(playingPeer(QStringLiteral("p2"), ms(3000)), ms(10000));
+    table.handlePacket(playingPeer(QStringLiteral("p3"), ms(9000)), ms(10000));
+    table.handlePacket(playingPeer(QStringLiteral("p4"), ms(500)), ms(10000));
+    EXPECT_EQ(QStringLiteral("p3"), table.masterPlayerId(localStopped(), ms(0), ms(10000)));
+    const auto ref = table.reference(localStopped(), ms(0), ms(10000));
+    ASSERT_TRUE(ref.has_value());
+    EXPECT_EQ(QStringLiteral("p3"), ref->playerId);
 }
 
-TEST(XdjSyncPeerTableTest, SinglePlayingPeerIsReference) {
+TEST(XdjSyncPeerTableTest, ArrivalTimeCountsForPlayingFor) {
+    // p2 reported 1 s playing 4 s ago; p3 reports 2 s playing now. p2 started
+    // first (5 s ago).
+    PeerTable table(QStringLiteral("me"));
+    table.handlePacket(playingPeer(QStringLiteral("p2"), ms(1000)), ms(6000));
+    table.handlePacket(playingPeer(QStringLiteral("p3"), ms(2000)), ms(10000));
+    EXPECT_EQ(QStringLiteral("p2"), table.masterPlayerId(localStopped(), ms(0), ms(10000)));
+}
+
+TEST(XdjSyncPeerTableTest, ThisPlayerCanBeMaster) {
+    PeerTable table(QStringLiteral("me"));
+    table.handlePacket(playingPeer(QStringLiteral("p2"), ms(3000)), ms(10000));
+    const PhaseSample local{true, 174.0, 0.0, ms(10000)};
+    EXPECT_EQ(QStringLiteral("me"), table.masterPlayerId(local, ms(20000), ms(10000)));
+    EXPECT_FALSE(table.reference(local, ms(20000), ms(10000)).has_value());
+}
+
+TEST(XdjSyncPeerTableTest, StoppedPlayersAreNotMaster) {
+    PeerTable table(QStringLiteral("me"));
+    table.handlePacket(state(QStringLiteral("p2"), false), ms(10000));
+    table.handlePacket(playingPeer(QStringLiteral("p3"), ms(1000)), ms(10000));
+    // This player was playing long ago but is stopped now.
+    EXPECT_EQ(QStringLiteral("p3"), table.masterPlayerId(localStopped(), ms(60000), ms(10000)));
+}
+
+TEST(XdjSyncPeerTableTest, MasterHandsOverWhenItStops) {
+    PeerTable table(QStringLiteral("me"));
+    table.handlePacket(playingPeer(QStringLiteral("p2"), ms(9000)), ms(10000));
+    table.handlePacket(playingPeer(QStringLiteral("p3"), ms(4000)), ms(10000));
+    EXPECT_EQ(QStringLiteral("p2"), table.masterPlayerId(localStopped(), ms(0), ms(10000)));
+    table.handlePacket(state(QStringLiteral("p2"), false), ms(10020));
+    table.handlePacket(playingPeer(QStringLiteral("p3"), ms(4020)), ms(10020));
+    EXPECT_EQ(QStringLiteral("p3"), table.masterPlayerId(localStopped(), ms(0), ms(10020)));
+}
+
+TEST(XdjSyncPeerTableTest, PlayersWithoutTempoAreNotMaster) {
+    PeerTable table(QStringLiteral("me"));
+    table.handlePacket(playingPeer(QStringLiteral("p2"), ms(9000), 0.0), ms(10000));
+    table.handlePacket(playingPeer(QStringLiteral("p3"), ms(1000)), ms(10000));
+    EXPECT_EQ(QStringLiteral("p3"), table.masterPlayerId(localStopped(), ms(0), ms(10000)));
+}
+
+TEST(XdjSyncPeerTableTest, NoMasterWhenNothingPlays) {
     PeerTable table(QStringLiteral("me"));
     table.handlePacket(state(QStringLiteral("p2"), false), ms(0));
-    table.handlePacket(state(QStringLiteral("p3"), true), ms(0));
-    EXPECT_EQ(QStringLiteral("p3"), table.referencePlayerId(PlayerSyncMode::Free));
+    EXPECT_FALSE(table.masterPlayerId(localStopped(), ms(0), ms(0)).has_value());
+    EXPECT_FALSE(table.reference(localStopped(), ms(0), ms(0)).has_value());
 }
 
-TEST(XdjSyncPeerTableTest, NoReferenceWhenAmbiguous) {
-    PeerTable table(QStringLiteral("me"));
-    table.handlePacket(state(QStringLiteral("p2"), true), ms(0));
-    table.handlePacket(state(QStringLiteral("p3"), true), ms(0));
-    EXPECT_FALSE(table.referencePlayerId(PlayerSyncMode::Free).has_value());
-}
-
-TEST(XdjSyncPeerTableTest, NoReferenceWhenSelfIsMaster) {
-    PeerTable table(QStringLiteral("me"));
-    table.handlePacket(state(QStringLiteral("p2"), true), ms(0));
-    EXPECT_FALSE(table.referencePlayerId(PlayerSyncMode::Master).has_value());
+TEST(XdjSyncPeerTableTest, NearSimultaneousStartGoesToLowestId) {
+    // Players see each other's start times with a few ms of network delay;
+    // starts closer than the tie window must give the same master everywhere.
+    PeerTable table(QStringLiteral("p4"));
+    table.handlePacket(playingPeer(QStringLiteral("p3"), ms(5050)), ms(10000));
+    table.handlePacket(playingPeer(QStringLiteral("p2"), ms(5000)), ms(10000));
+    EXPECT_EQ(QStringLiteral("p2"), table.masterPlayerId(localStopped(), ms(0), ms(10000)));
+    const PhaseSample local{true, 174.0, 0.0, ms(10000)};
+    // This player too: started 5.06 s ago, also within the window.
+    EXPECT_EQ(QStringLiteral("p2"), table.masterPlayerId(local, ms(5060), ms(10000)));
 }
 
 TEST(XdjSyncPeerTableTest, OffsetUsesPeerClock) {
@@ -117,9 +171,16 @@ TEST(XdjSyncPeerTableTest, OffsetUsesPeerClock) {
     // i.e. our 0 ms. We are at beat distance 0.1 at our 0 ms: +0.1 beat.
     PeerTable table(QStringLiteral("me"));
     alignClock(&table, QStringLiteral("p2"), ms(5000), ms(0));
-    table.handlePacket(state(QStringLiteral("p2"), true, PlayerSyncMode::Free, 120.0, 0.0, ms(5000)),
+    // Playing for long, so p2 is master and our reference.
+    table.handlePacket(state(QStringLiteral("p2"),
+                               true,
+                               PlayerSyncMode::Free,
+                               120.0,
+                               0.0,
+                               ms(5000),
+                               ms(60000)),
             ms(600));
-    const auto ref = table.reference(localPlaying(120.0, 0.1, ms(0)), PlayerSyncMode::Free, ms(700));
+    const auto ref = table.reference(localPlaying(120.0, 0.1, ms(0)), ms(0), ms(700));
     ASSERT_TRUE(ref.has_value());
     EXPECT_EQ(QStringLiteral("p2"), ref->playerId);
     EXPECT_TRUE(ref->playing);
@@ -139,7 +200,7 @@ TEST(XdjSyncPeerTableTest, ClockSurvivesUntilPeerExpires) {
     table.expire(ms(1700));
     EXPECT_EQ(0, table.peerCount());
     table.handlePacket(state(QStringLiteral("p2"), true), ms(1800));
-    const auto ref = table.reference(localPlaying(174.0, 0.0, ms(1800)), PlayerSyncMode::Free, ms(1800));
+    const auto ref = table.reference(localStopped(), ms(0), ms(1800));
     ASSERT_TRUE(ref.has_value());
     EXPECT_FALSE(ref->clock.has_value());
 }

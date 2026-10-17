@@ -38,6 +38,9 @@ struct StatePacket {
     qint64 beatIndex;
     /// When this phase leaves the sender's audio output, sender clock.
     Duration atDac;
+    /// How long the deck has been playing without a stop; 0 if stopped.
+    /// Used for the automatic master (D18). Optional on the wire (appended).
+    Duration playingFor{};
 };
 
 /// Clock alignment request, unicast to one peer.
