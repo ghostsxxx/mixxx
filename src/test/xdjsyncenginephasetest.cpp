@@ -5,6 +5,7 @@
 namespace {
 
 using mixxx::Duration;
+using mixxx::xdjsync::callbackToDacSeconds;
 using mixxx::xdjsync::EnginePhaseBuffer;
 
 Duration ms(double millis) {
@@ -57,6 +58,19 @@ TEST(XdjSyncEnginePhaseTest, StaleSampleIsDropped) {
     buffer.publish(true, 128.0, 0.1, ms(10));
     EXPECT_TRUE(buffer.latest(ms(1010) + EnginePhaseBuffer::kMaxAge).has_value());
     EXPECT_FALSE(buffer.latest(ms(1011) + EnginePhaseBuffer::kMaxAge).has_value());
+}
+
+TEST(XdjSyncEnginePhaseTest, PrefersRawDriverDacDelay) {
+    // Mixxx's estimate (CPU-timer fallback) can be off by up to two buffers
+    // per process; the driver's own timestamps are used when plausible.
+    EXPECT_NEAR(0.0213, callbackToDacSeconds(10.5, 10.5213, 0.004), 1e-12);
+}
+
+TEST(XdjSyncEnginePhaseTest, FallsBackOnImplausibleDriverDacDelay) {
+    // Missing (0), in the past, or absurdly far in the future.
+    EXPECT_DOUBLE_EQ(0.004, callbackToDacSeconds(10.5, 0.0, 0.004));
+    EXPECT_DOUBLE_EQ(0.004, callbackToDacSeconds(10.5, 10.4, 0.004));
+    EXPECT_DOUBLE_EQ(0.004, callbackToDacSeconds(10.5, 12.0, 0.004));
 }
 
 } // namespace

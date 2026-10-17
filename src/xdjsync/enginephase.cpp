@@ -49,6 +49,16 @@ EnginePhaseBuffer& enginePhase() {
     return s_buffer;
 }
 
+double callbackToDacSeconds(double driverCurrentTime,
+        double driverOutputBufferDacTime,
+        double mixxxEstimateSeconds) {
+    const double driverSeconds = driverOutputBufferDacTime - driverCurrentTime;
+    if (driverOutputBufferDacTime > 0.0 && driverSeconds > 0.0 && driverSeconds < 1.0) {
+        return driverSeconds;
+    }
+    return mixxxEstimateSeconds;
+}
+
 void onAudioCallbackEntry(Duration firstSampleAtDac) {
     enginePhase().setFirstSampleAtDac(firstSampleAtDac);
 }

@@ -6,6 +6,7 @@
 #include <QUdpSocket>
 
 #include "control/controlobject.h"
+#include "control/controlpushbutton.h"
 #include "control/pollingcontrolproxy.h"
 #include "moc_xdjsyncservice.cpp"
 #include "util/logger.h"
@@ -221,9 +222,13 @@ class XdjSyncWorker : public QObject {
 
 XdjSyncService::XdjSyncService(UserSettingsPointer pConfig) {
     m_controls.pEnabled = makeReadOnly("enabled");
-    // Persistent: a player restarts in the mode it was left in.
-    m_controls.pSyncMode = std::make_unique<ControlObject>(
-            key("sync_mode"), true, false, true);
+    // Persistent: a player restarts in the mode it was left in. A 4-state
+    // toggle, so a skin button cycles through the modes (a plain control
+    // would act as a momentary push button).
+    auto pSyncMode = std::make_unique<ControlPushButton>(key("sync_mode"), true);
+    pSyncMode->setButtonMode(mixxx::control::ButtonMode::Toggle);
+    pSyncMode->setStates(static_cast<int>(PlayerSyncMode::Master) + 1);
+    m_controls.pSyncMode = std::move(pSyncMode);
     m_controls.pPeerCount = makeReadOnly("peer_count");
     m_controls.pRefPresent = makeReadOnly("ref_present");
     m_controls.pRefOffsetValid = makeReadOnly("ref_offset_valid");

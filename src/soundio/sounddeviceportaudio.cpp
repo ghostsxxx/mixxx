@@ -1230,7 +1230,10 @@ void SoundDevicePortAudio::updateCallbackEntryToDacTime(
 
     // m_clkRefTimer was restarted at callback entry above.
     mixxx::xdjsync::onAudioCallbackEntry(mixxx::Time::elapsed() - m_clkRefTimer.elapsed() +
-            mixxx::Duration::fromSeconds(callbackEntrytoDacSecs));
+            mixxx::Duration::fromSeconds(mixxx::xdjsync::callbackToDacSeconds(
+                    timeInfo->currentTime,
+                    timeInfo->outputBufferDacTime,
+                    callbackEntrytoDacSecs)));
 
     //qDebug() << callbackEntrytoDacSecs << timeSinceLastCbSecs;
 }

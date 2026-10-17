@@ -53,6 +53,15 @@ class EngineDeckPhaseSource {
     PollingControlProxy m_beatDistance;
 };
 
+/// Delay from audio callback entry to the DAC, in seconds: the driver's own
+/// timestamps (PortAudio outputBufferDacTime - currentTime) if plausible,
+/// else Mixxx's estimate. Mixxx's estimate rejects driver timestamps on
+/// CPU-timer jitter and then guesses within two buffers, differently per
+/// process, which breaks comparing players.
+double callbackToDacSeconds(double driverCurrentTime,
+        double driverOutputBufferDacTime,
+        double mixxxEstimateSeconds);
+
 /// Hooks for Mixxx's audio code. No-ops until a source is installed.
 /// Sound device clock reference callback, at entry.
 void onAudioCallbackEntry(Duration firstSampleAtDac);
